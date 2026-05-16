@@ -21,6 +21,11 @@ FROM node:22-alpine AS dev
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 ENV NEXT_TELEMETRY_DISABLED=1
+# Pre-populate node_modules in the image so the named volume in
+# docker-compose has something to seed from. The compose file mounts
+# the source over /app but preserves /app/node_modules.
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json pnpm-lock.yaml* ./
 EXPOSE 3000
 CMD ["pnpm", "dev", "-p", "3000", "-H", "0.0.0.0"]
 

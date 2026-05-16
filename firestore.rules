@@ -1,0 +1,97 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    function userRole() {
+      return isSignedIn() ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role : null;
+    }
+    function isAdmin() {
+      return userRole() in ['admin', 'ecosystem-owner'];
+    }
+
+    // ─── users ─────────────────────────────────────────────────────────
+    // Users can read + write their own profile. Admins can read all users.
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ─── startups / mentors ────────────────────────────────────────────
+    // Owner creates and updates own record; admins read everything.
+    match /startups/{id} {
+      allow read: if isOwner(resource.data.ownerUid) || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isOwner(resource.data.ownerUid) || isAdmin();
+      allow delete: if isAdmin();
+    }
+    match /mentors/{id} {
+      allow read: if isOwner(resource.data.ownerUid) || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isOwner(resource.data.ownerUid) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ─── documents (evidence metadata) ─────────────────────────────────
+    match /documents/{id} {
+      allow read: if isOwner(resource.data.ownerUid) || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isOwner(resource.data.ownerUid) || isAdmin();
+      allow delete: if isOwner(resource.data.ownerUid) || isAdmin();
+    }
+
+    // ─── AI agent runs / verification results ──────────────────────────
+    match /autofill_profiles/{id} {
+      allow read: if isOwner(resource.data.ownerUid) || isAdmin();
+      allow write: if isOwner(resource.data.ownerUid) || isAdmin();
+    }
+    match /verification_results/{id} {
+      allow read: if isOwner(resource.data.ownerUid) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ─── passports ─────────────────────────────────────────────────────
+    // Holders read their own passport; everyone signed in can read
+    // by ID (so a shared link works). Only admins issue / modify.
+    match /passports/{id} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+    // public verification endpoint goes through server (admin SDK) — no
+    // unauthenticated client reads allowed here.
+
+    match /stamps/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /badges/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /linkages/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /admin_reviews/{id} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+    match /audit_logs/{id} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    // Default deny.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
