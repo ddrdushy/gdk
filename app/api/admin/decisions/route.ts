@@ -47,15 +47,34 @@ export async function POST(req: NextRequest) {
 
   const db = adminDb();
 
+  // Detect whether this is a startup or mentor passport. The admin queue
+  // already knows, but the API shouldn't trust the client — re-check from
+  // the source-of-truth collections.
+  const [startupSnap, mentorSnap, runSnap] = await Promise.all([
+    db.collection("startups").doc(ownerUid).get(),
+    db.collection("mentors").doc(ownerUid).get(),
+    db.collection("verification_results").doc(ownerUid).get(),
+  ]);
+  const kind: "startup" | "mentor" | null = startupSnap.exists
+    ? "startup"
+    : mentorSnap.exists
+      ? "mentor"
+      : null;
+  if (!kind) {
+    return NextResponse.json({ error: "Subject not found" }, { status: 404 });
+  }
+  const sourceData = (kind === "startup" ? startupSnap.data() : mentorSnap.data()) ?? {};
+  const runData = (runSnap.exists ? runSnap.data() : null) ?? null;
+
   try {
     await db.runTransaction(async (tx) => {
-      const startupRef = db.collection("startups").doc(ownerUid);
+      const sourceRef = db.collection(kind === "startup" ? "startups" : "mentors").doc(ownerUid);
       const reviewRef = db.collection("admin_reviews").doc();
       const auditRef = db.collection("audit_logs").doc();
       const passportRef = db.collection("passports").doc(ownerUid);
 
       tx.set(
-        startupRef,
+        sourceRef,
         {
           status,
           adminDecision: decision,
@@ -68,6 +87,7 @@ export async function POST(req: NextRequest) {
 
       tx.set(reviewRef, {
         ownerUid,
+        type: kind,
         decision,
         status,
         note: note ?? null,
@@ -80,27 +100,44 @@ export async function POST(req: NextRequest) {
         type: "admin.decision",
         actorUid: auth.uid,
         targetUid: ownerUid,
+        targetKind: kind,
         decision,
         at: FieldValue.serverTimestamp(),
       });
 
       if (decision === "approve" || decision === "conditionally-approve") {
-        tx.set(
-          passportRef,
-          {
-            ownerUid,
-            type: "startup",
-            status,
-            issuedBy: auth.uid,
-            issuedAt: FieldValue.serverTimestamp(),
-            reviewDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
-          },
-          { merge: true }
-        );
+        // Build a denormalised passport snapshot so the public passport
+        // page and analytics don't need to re-walk verification_results.
+        // We copy the agent outputs verbatim — they were already validated
+        // when the orchestrator wrote them.
+        const passportSnapshot: Record<string, unknown> = {
+          ownerUid,
+          type: kind,
+          status,
+          issuedBy: auth.uid,
+          issuedAt: FieldValue.serverTimestamp(),
+          reviewDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+          // Identity snapshot
+          holderName:
+            kind === "startup"
+              ? sourceData.startupName
+              : sourceData.mentorName,
+          sector: sourceData.sector ?? null,
+          stage: sourceData.stage ?? null,
+          country: sourceData.country ?? null,
+          // Verification snapshot
+          stamps: runData?.stamps ?? null,
+          eligibility: runData?.eligibility ?? null,
+          readiness: runData?.readiness ?? null,
+          evidence: runData?.evidence ?? null,
+          linkage: runData?.linkage ?? null,
+          matches: runData?.matches ?? null,
+        };
+        tx.set(passportRef, passportSnapshot, { merge: true });
       }
     });
 
-    return NextResponse.json({ ok: true, status });
+    return NextResponse.json({ ok: true, status, type: kind });
   } catch (err) {
     console.error("admin decision failed", err);
     const msg = err instanceof Error ? err.message : "Internal error";

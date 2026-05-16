@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ShieldCheck, ExternalLink } from "lucide-react";
 import { adminDb } from "@/lib/firebase/admin";
 import { startupProfileSchema } from "@/lib/schemas/passport";
+import { mentorProfileSchema } from "@/lib/schemas/mentor";
 import {
   evidenceAgentSchema,
   eligibilityAgentSchema,
@@ -10,7 +11,15 @@ import {
   stampAgentSchema,
   linkageAgentSchema,
 } from "@/lib/schemas/verification";
+import {
+  mentorEvidenceSchema,
+  mentorEligibilitySchema,
+  mentorReadinessSchema,
+  mentorStampsSchema,
+  mentorMatchesSchema,
+} from "@/lib/schemas/mentor-verification";
 import { PassportDetail } from "@/components/passport/passport-detail";
+import { MentorPassportDetail } from "@/components/passport/mentor-passport-detail";
 import { ViewTracker } from "@/components/passport/view-tracker";
 import { formatPassportId } from "@/lib/utils";
 
@@ -24,17 +33,25 @@ interface PublicPassportPageProps {
 export default async function PublicPassportPage({ params }: PublicPassportPageProps) {
   const { id } = await params;
 
-  let profileData: unknown;
-  let runData: unknown;
+  let kind: "startup" | "mentor" | null = null;
+  let profileData: Record<string, unknown> | null = null;
+  let runData: Record<string, unknown> | null = null;
   let fetchFailed = false;
   try {
     const db = adminDb();
-    const [profileSnap, runSnap] = await Promise.all([
+    const [startupSnap, mentorSnap, runSnap] = await Promise.all([
       db.collection("startups").doc(id).get(),
+      db.collection("mentors").doc(id).get(),
       db.collection("verification_results").doc(id).get(),
     ]);
-    profileData = profileSnap.exists ? profileSnap.data() : null;
-    runData = runSnap.exists ? runSnap.data() : null;
+    if (startupSnap.exists) {
+      kind = "startup";
+      profileData = startupSnap.data() ?? null;
+    } else if (mentorSnap.exists) {
+      kind = "mentor";
+      profileData = mentorSnap.data() ?? null;
+    }
+    runData = runSnap.exists ? (runSnap.data() ?? null) : null;
   } catch (err) {
     console.error("failed to load public passport", err);
     fetchFailed = true;
@@ -50,19 +67,9 @@ export default async function PublicPassportPage({ params }: PublicPassportPageP
       </div>
     );
   }
-  if (!profileData) return notFound();
+  if (!profileData || !kind) return notFound();
 
-  const profileParsed = startupProfileSchema.safeParse(profileData);
-  if (!profileParsed.success) return notFound();
-
-  const run = (runData as Record<string, unknown> | null) ?? null;
-  const evidence = run?.evidence ? evidenceAgentSchema.safeParse(run.evidence).data : undefined;
-  const eligibility = run?.eligibility ? eligibilityAgentSchema.safeParse(run.eligibility).data : undefined;
-  const readiness = run?.readiness ? readinessAgentSchema.safeParse(run.readiness).data : undefined;
-  const stamps = run?.stamps ? stampAgentSchema.safeParse(run.stamps).data : undefined;
-  const linkage = run?.linkage ? linkageAgentSchema.safeParse(run.linkage).data : undefined;
-
-  const passportId = formatPassportId("ST", new Date().getFullYear(), 1);
+  const passportId = formatPassportId(kind === "mentor" ? "MN" : "ST", new Date().getFullYear(), 1);
 
   return (
     <div className="min-h-screen bg-navy-50/30">
@@ -78,7 +85,7 @@ export default async function PublicPassportPage({ params }: PublicPassportPageP
             </span>
           </Link>
           <p className="hidden text-xs text-navy-500 md:block">
-            Public passport · verified credentials
+            Public {kind === "mentor" ? "mentor" : "startup"} passport · verified credentials
           </p>
           <Link
             href="/start"
@@ -88,17 +95,52 @@ export default async function PublicPassportPage({ params }: PublicPassportPageP
           </Link>
         </div>
       </header>
-      <PassportDetail
-        profile={profileParsed.data}
-        passportId={passportId}
-        evidence={evidence}
-        eligibility={eligibility}
-        readiness={readiness}
-        stamps={stamps}
-        linkage={linkage}
-        publicView
-      />
+
+      {kind === "startup" ? renderStartup(profileData, runData, passportId) : renderMentor(profileData, runData, passportId)}
+
       <ViewTracker passportId={id} />
     </div>
+  );
+}
+
+function renderStartup(
+  profileData: Record<string, unknown>,
+  run: Record<string, unknown> | null,
+  passportId: string
+) {
+  const parsed = startupProfileSchema.safeParse(profileData);
+  if (!parsed.success) return notFound();
+  return (
+    <PassportDetail
+      profile={parsed.data}
+      passportId={passportId}
+      evidence={run?.evidence ? evidenceAgentSchema.safeParse(run.evidence).data : undefined}
+      eligibility={run?.eligibility ? eligibilityAgentSchema.safeParse(run.eligibility).data : undefined}
+      readiness={run?.readiness ? readinessAgentSchema.safeParse(run.readiness).data : undefined}
+      stamps={run?.stamps ? stampAgentSchema.safeParse(run.stamps).data : undefined}
+      linkage={run?.linkage ? linkageAgentSchema.safeParse(run.linkage).data : undefined}
+      publicView
+    />
+  );
+}
+
+function renderMentor(
+  profileData: Record<string, unknown>,
+  run: Record<string, unknown> | null,
+  passportId: string
+) {
+  const parsed = mentorProfileSchema.safeParse(profileData);
+  if (!parsed.success) return notFound();
+  return (
+    <MentorPassportDetail
+      profile={parsed.data}
+      passportId={passportId}
+      evidence={run?.evidence ? mentorEvidenceSchema.safeParse(run.evidence).data : undefined}
+      eligibility={run?.eligibility ? mentorEligibilitySchema.safeParse(run.eligibility).data : undefined}
+      readiness={run?.readiness ? mentorReadinessSchema.safeParse(run.readiness).data : undefined}
+      stamps={run?.stamps ? mentorStampsSchema.safeParse(run.stamps).data : undefined}
+      matches={run?.matches ? mentorMatchesSchema.safeParse(run.matches).data : undefined}
+      publicView
+    />
   );
 }
