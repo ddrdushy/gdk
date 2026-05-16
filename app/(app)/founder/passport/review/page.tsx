@@ -39,7 +39,7 @@ type FormState = {
 };
 
 function autofillToForm(a: StartupAutofill | undefined): FormState {
-  const v = (f: { value: unknown } | undefined) =>
+  const v = (f: { value?: unknown } | undefined) =>
     f?.value == null ? "" : String(f.value);
   return {
     startupName: v(a?.startupName),
@@ -273,7 +273,7 @@ function Field({
 }: {
   label: string;
   required?: boolean;
-  aiField?: { value: unknown; confidence?: "high" | "medium" | "low"; source?: string };
+  aiField?: { value?: unknown; confidence?: "high" | "medium" | "low" | null; source?: string | null };
   children: React.ReactNode;
 }) {
   return (
@@ -283,7 +283,7 @@ function Field({
           {label}
           {required && <span className="ml-1 text-rose-500">*</span>}
         </Label>
-        <ConfidencePill level={aiField?.confidence} />
+        <ConfidencePill level={aiField?.confidence ?? undefined} />
       </div>
       {children}
       {aiField?.source && (

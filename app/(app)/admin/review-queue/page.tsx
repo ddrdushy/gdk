@@ -4,9 +4,17 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2, Inbox, ArrowRight } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-provider";
-import { fetchAdminReviewQueue, type AdminQueueItem } from "@/lib/firebase/queries";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+
+interface AdminQueueItem {
+  ownerUid: string;
+  startupName: string;
+  sector: string;
+  stage: string;
+  country: string;
+  status: string;
+}
 
 const STATUS_LABELS: Record<string, { label: string; variant: "verified" | "pending" | "risk" | "outline" }> = {
   submitted: { label: "Submitted", variant: "outline" },
@@ -16,26 +24,31 @@ const STATUS_LABELS: Record<string, { label: string; variant: "verified" | "pend
 };
 
 export default function ReviewQueuePage() {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const [items, setItems] = useState<AdminQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!user) return;
     let cancelled = false;
     void (async () => {
       try {
-        const data = await fetchAdminReviewQueue();
-        if (!cancelled) setItems(data);
+        const idToken = await user.getIdToken();
+        const res = await fetch("/api/admin/queue", {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+        if (!cancelled) setItems(data.items ?? []);
       } catch (err) {
-        console.error(err);
+        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load queue");
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    return () => { cancelled = true; };
+  }, [user]);
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10 lg:px-8">
@@ -58,6 +71,10 @@ export default function ReviewQueuePage() {
         <div className="mt-12 flex justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-navy-400" />
         </div>
+      ) : error ? (
+        <Card className="mt-8 p-6 border-rose-200 bg-rose-50">
+          <p className="text-sm text-rose-800">{error}</p>
+        </Card>
       ) : items.length === 0 ? (
         <Card className="mt-8 p-12 text-center border-dashed">
           <Inbox className="mx-auto h-10 w-10 text-navy-300" />

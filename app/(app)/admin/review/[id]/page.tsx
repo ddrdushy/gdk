@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { Loader2, ArrowLeft, CheckCircle2, AlertTriangle, FileQuestion, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth/auth-provider";
-import { fetchVerificationRun } from "@/lib/firebase/queries";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
@@ -57,13 +56,20 @@ export default function AdminReviewDetailPage({
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    if (!user) return;
     let cancelled = false;
     void (async () => {
       try {
-        const { profile: p, run } = await fetchVerificationRun(id);
+        const idToken = await user.getIdToken();
+        const res = await fetch(`/api/admin/review/${id}`, {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
         if (cancelled) return;
-        const parsed = p ? startupProfileSchema.safeParse(p) : null;
+        const parsed = data.profile ? startupProfileSchema.safeParse(data.profile) : null;
         setProfile(parsed?.success ? parsed.data : null);
+        const run = data.run as Record<string, unknown> | null;
         if (run) {
           setEvidence(run.evidence ? evidenceAgentSchema.safeParse(run.evidence).data : undefined);
           setEligibility(run.eligibility ? eligibilityAgentSchema.safeParse(run.eligibility).data : undefined);
@@ -80,7 +86,7 @@ export default function AdminReviewDetailPage({
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, user]);
 
   async function onSubmitDecision() {
     if (!decision || !user) return;
