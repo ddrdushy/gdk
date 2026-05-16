@@ -1,0 +1,860 @@
+# TrustPass AI — Google Cloud Guidance
+
+For your hackathon build, don’t overcomplicate it with too many enterprise services. Build a **clean Google Cloud MVP** with **7 AI agents**, Firebase, Gemini, Cloud Run, Firestore, Cloud Storage, and optional Document AI.
+
+The goal is:
+
+```text
+Upload evidence → AI autofills profile → User confirms → AI verifies → Admin approves → Passport issued → Linkages recommended
+```
+
+---
+
+# 1. Recommended Google Cloud Architecture
+
+## MVP Architecture
+
+```text
+Next.js Frontend
+      ↓
+Firebase Auth
+      ↓
+Cloud Run Backend API
+      ↓
+Gemini / Vertex AI
+      ↓
+Firestore
+      ↓
+Cloud Storage
+      ↓
+Passport / Stamp / Linkage Records
+```
+
+## Google Cloud Services You Should Use
+
+| Service                           | Use in TrustPass AI                                                                                                                                                                                                                          |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Firebase Authentication**       | Login, signup, Google login, role-based access. Firebase Auth supports email/password, phone, and federated identity providers like Google. ([Firebase][1])                                                                                  |
+| **Cloud Firestore**               | Store users, startups, mentors, passports, stamps, verification results, linkages, and admin decisions. Firestore is a cloud-hosted NoSQL document database accessible from web and backend SDKs. ([Firebase][2])                            |
+| **Cloud Storage**                 | Store uploaded pitch decks, CVs, registration docs, evidence files, and generated passport PDFs/images. Cloud Storage is Google Cloud’s managed object storage for unstructured data. ([Google Cloud][3])                                    |
+| **Cloud Run**                     | Host your backend APIs and agent workflows.                                                                                                                                                                                                  |
+| **Gemini API / Vertex AI Gemini** | AI extraction, autofill, verification, scoring, explanation, and linkage reasoning. Gemini supports function calling/tool use, which lets models call external functions/APIs and return structured actions. ([Google AI for Developers][4]) |
+| **Document AI**                   | Optional, for better document extraction from PDFs and scanned documents. Document AI converts unstructured document data into structured data. ([Google Cloud Documentation][5])                                                            |
+| **Secret Manager**                | Store API keys and service credentials safely.                                                                                                                                                                                               |
+| **Cloud Logging**                 | Debug backend, AI calls, verification errors, and audit issues.                                                                                                                                                                              |
+
+For the hackathon, you can skip complex enterprise setup like BigQuery, advanced Vertex AI Agent Builder, Kubernetes, or full workflow orchestration.
+
+---
+
+# 2. How Many AI Agents Should You Build?
+
+Build **7 agents** for the MVP.
+
+These are not necessarily seven separate deployed services. They can be **seven logical agents** inside one Cloud Run backend.
+
+## Recommended 7-Agent Design
+
+|  # | Agent                            | Purpose                                                                                 |
+| -: | -------------------------------- | --------------------------------------------------------------------------------------- |
+|  1 | **Orchestrator Agent**           | Controls the full flow and calls the right agent at the right step                      |
+|  2 | **AI Passport Builder Agent**    | Autofills startup/mentor profile from pitch deck, website text, CV, bio, or description |
+|  3 | **Evidence Extraction Agent**    | Reads documents and identifies key claims, evidence, and missing fields                 |
+|  4 | **Eligibility Agent**            | Checks whether startup/mentor fits programme rules                                      |
+|  5 | **Readiness & Risk Agent**       | Scores readiness and flags risks, gaps, contradictions, and missing proof               |
+|  6 | **Passport & Stamp Agent**       | Recommends passport status, badges, earned stamps, and pending stamps                   |
+|  7 | **Linkage Recommendation Agent** | Recommends mentors, partners, programmes, service providers, or next support path       |
+
+This is enough to look advanced without becoming too heavy.
+
+---
+
+# 3. Agent-by-Agent Guidance
+
+## Agent 1: Orchestrator Agent
+
+### Purpose
+
+This is the controller.
+
+It decides what happens next:
+
+```text
+Upload received
+      ↓
+Run Passport Builder
+      ↓
+Run Evidence Extraction
+      ↓
+Run Eligibility Check
+      ↓
+Run Readiness & Risk Check
+      ↓
+Run Passport Stamp Recommendation
+      ↓
+Run Linkage Recommendation
+      ↓
+Return result to UI
+```
+
+### What it does
+
+* Receives request from frontend
+* Checks user role
+* Starts the correct workflow
+* Calls other agents in sequence
+* Saves intermediate results
+* Returns final output to UI
+
+### Build as
+
+A backend function inside Cloud Run.
+
+---
+
+## Agent 2: AI Passport Builder Agent
+
+### Purpose
+
+Avoid manual data entry.
+
+This agent turns evidence into a structured passport profile.
+
+### Input examples
+
+For startup:
+
+* Pitch deck
+* Website text
+* Startup description
+* Company profile
+* Product brochure
+
+For mentor:
+
+* CV
+* LinkedIn-style profile text
+* Professional bio
+* Credentials
+* Expertise description
+
+### Output
+
+For startup:
+
+```text
+Startup name
+Sector
+Country
+Stage
+Founder name
+Product summary
+Problem solved
+Target customers
+Business model
+Support needed
+Traction
+Missing fields
+Confidence per field
+```
+
+For mentor:
+
+```text
+Mentor name
+Expertise areas
+Sector focus
+Country
+Organisation
+Startup stage fit
+Availability
+Credentials
+Missing fields
+Confidence per field
+```
+
+### UI connection
+
+This agent powers the screen:
+
+```text
+We prepared your passport profile.
+Please review and confirm.
+```
+
+---
+
+## Agent 3: Evidence Extraction Agent
+
+### Purpose
+
+This agent reads uploaded files and extracts evidence.
+
+### What it finds
+
+* Claims
+* Proof
+* Missing documents
+* Inconsistencies
+* Important keywords
+* Programme-relevant evidence
+
+### Example output
+
+```text
+Claim found:
+Startup claims hospital pilot discussions.
+
+Evidence found:
+No supporting pilot document uploaded.
+
+Suggested action:
+Request pilot customer proof.
+```
+
+### Google Cloud setup
+
+Use either:
+
+* Gemini multimodal/document input for hackathon speed
+* Document AI for stronger PDF/document extraction
+
+Document AI is useful because it is designed to transform unstructured documents into structured data for processing. ([Google Cloud Documentation][5])
+
+---
+
+## Agent 4: Eligibility Agent
+
+### Purpose
+
+Checks whether a startup or mentor fits programme rules.
+
+### For startup
+
+Checks:
+
+* Sector
+* Geography
+* Startup stage
+* Required documents
+* Programme goal alignment
+* Support need alignment
+* Impact alignment
+
+### For mentor
+
+Checks:
+
+* Expertise
+* Sector fit
+* Programme fit
+* Availability
+* Startup stage suitability
+* Credentials
+
+### Example output
+
+```text
+Eligibility Score: 86%
+Status Recommendation: Conditionally Eligible
+
+Reason:
+Startup matches the HealthTech programme and has an MVP, but pilot evidence is missing.
+```
+
+---
+
+## Agent 5: Readiness & Risk Agent
+
+### Purpose
+
+Scores maturity and flags issues.
+
+### Startup readiness areas
+
+* Business readiness
+* Technical readiness
+* Market readiness
+* Funding readiness
+* Partnership readiness
+* Compliance readiness
+
+### Risk examples
+
+* Claims revenue but no evidence
+* Claims pilots but no proof
+* Founder profile missing
+* Website not provided
+* Pitch deck and form details conflict
+* Compliance risk in regulated sector
+
+### Example output
+
+```text
+Readiness Score: 78%
+Risk Level: Medium
+
+Risk Flags:
+1. Pilot claim unsupported
+2. Healthcare data privacy explanation missing
+3. Funding readiness material incomplete
+```
+
+---
+
+## Agent 6: Passport & Stamp Agent
+
+### Purpose
+
+Decides what passport status and stamps should be recommended.
+
+### It recommends
+
+* Passport status
+* Earned stamps
+* Pending stamps
+* Locked stamps
+* Badges
+* Review date
+* Next action
+
+### Example output
+
+```text
+Passport Status:
+Conditionally Verified
+
+Earned Stamps:
+- Profile Auto-Built
+- User Confirmed
+- Pitch Deck Reviewed
+- Programme Eligible
+
+Pending Stamps:
+- Pilot Ready
+- Compliance Reviewed
+- Funding Ready
+```
+
+### Important
+
+This agent should **recommend**, not issue. Admin must approve.
+
+---
+
+## Agent 7: Linkage Recommendation Agent
+
+### Purpose
+
+Recommends the next ecosystem connections.
+
+### It uses
+
+* Passport status
+* Earned stamps
+* Pending stamps
+* Startup needs
+* Mentor expertise
+* Programme fit
+* Missing evidence
+* Risk flags
+
+### Example
+
+For MediNova AI:
+
+```text
+Recommended sequence:
+1. Compliance Mentor
+2. Hospital Pilot Partner
+3. Funding Readiness Advisor
+```
+
+### Why sequence matters
+
+This is stronger than simple matching.
+
+You can say:
+
+> “TrustPass AI does not randomly match people. It recommends the right relationship sequence based on verified passport intelligence.”
+
+---
+
+# 4. Google Cloud Setup Checklist
+
+## Step 1: Create Google Cloud Project
+
+Create one project for the hackathon.
+
+Example name:
+
+```text
+trustpass-ai-hackathon
+```
+
+Use one project for:
+
+* Firebase
+* Firestore
+* Cloud Storage
+* Cloud Run
+* Gemini / Vertex AI
+* Document AI if needed
+
+---
+
+## Step 2: Enable Required APIs
+
+Enable these APIs in Google Cloud:
+
+| API                        | Required?   | Why                     |
+| -------------------------- | ----------- | ----------------------- |
+| Vertex AI API / Gemini API | Yes         | AI agents               |
+| Cloud Run API              | Yes         | Backend hosting         |
+| Cloud Build API            | Yes         | Deploy backend          |
+| Artifact Registry API      | Yes         | Store container images  |
+| Firebase Authentication    | Yes         | User auth               |
+| Firestore                  | Yes         | App database            |
+| Cloud Storage              | Yes         | File uploads            |
+| Document AI API            | Optional    | PDF/document extraction |
+| Secret Manager API         | Recommended | Store secrets           |
+| Cloud Logging              | Recommended | Debugging               |
+
+---
+
+## Step 3: Firebase Setup
+
+Use Firebase for frontend-friendly app services.
+
+### Configure
+
+1. Create Firebase project linked to Google Cloud project.
+2. Enable **Authentication**.
+3. Add sign-in providers:
+
+   * Email/password
+   * Google sign-in
+4. Create Firestore database.
+5. Create Cloud Storage bucket.
+6. Add your frontend web app in Firebase.
+
+Firebase Authentication provides backend services and SDKs for authentication, including email/password and Google sign-in. ([Firebase][1])
+
+---
+
+## Step 4: Firestore Collections
+
+For MVP, keep collections simple.
+
+```text
+users
+organisations
+startups
+mentors
+documents
+autofill_profiles
+verification_results
+passports
+stamps
+badges
+linkages
+admin_reviews
+audit_logs
+```
+
+Do not overbuild the database.
+
+Firestore stores data as documents inside collections, which fits this kind of passport/profile structure well. ([Firebase][6])
+
+---
+
+## Step 5: Cloud Storage Buckets
+
+Create buckets or folders for:
+
+```text
+uploads/startups
+uploads/mentors
+processed/documents
+passports/pdf
+passports/badges
+public/verification-assets
+```
+
+### Store
+
+* Pitch decks
+* CVs
+* Company documents
+* Mentor evidence
+* Generated passport PDFs
+* Badge images
+* QR images
+
+---
+
+## Step 6: Cloud Run Backend
+
+Deploy one backend service first.
+
+Example backend:
+
+```text
+trustpass-api
+```
+
+### Backend responsibilities
+
+* Receive uploads
+* Trigger AI agent workflows
+* Call Gemini
+* Save results to Firestore
+* Manage passport issuance
+* Manage stamps
+* Manage linkages
+* Return API responses to frontend
+
+For MVP, one Cloud Run service is enough.
+
+---
+
+## Step 7: Gemini / Vertex AI Setup
+
+Use Gemini for:
+
+* Autofill
+* Extraction
+* Verification
+* Scoring
+* Explanation
+* Linkage reasoning
+
+Gemini function calling/tool use is useful when the model needs to call your backend functions or return structured operations instead of only free-text responses. ([Google AI for Developers][4])
+
+### Recommended Gemini usage
+
+Use structured prompts that return JSON-like outputs for:
+
+```text
+Autofilled profile
+Missing fields
+Eligibility result
+Readiness score
+Risk flags
+Stamp recommendations
+Linkage recommendations
+```
+
+---
+
+## Step 8: Document AI Setup — Optional
+
+Use Document AI only if you need stronger document extraction.
+
+For hackathon:
+
+* If pitch decks are simple PDFs, Gemini may be enough.
+* If documents are scanned, messy, or image-heavy, Document AI can help.
+
+Document AI is specifically designed for document processing and understanding, converting unstructured document data into structured data. ([Google Cloud Documentation][7])
+
+---
+
+## Step 9: Security Setup
+
+Minimum security setup:
+
+| Area            | What to do                              |
+| --------------- | --------------------------------------- |
+| Authentication  | Use Firebase Auth                       |
+| Authorization   | Store user role in Firestore            |
+| File access     | Keep uploaded docs private              |
+| Backend access  | Validate Firebase ID token in Cloud Run |
+| Secrets         | Store keys in Secret Manager            |
+| Admin actions   | Log every passport/stamp decision       |
+| Public passport | Show only safe public fields            |
+
+Cloud Firestore REST API requests can use Firebase Authentication ID tokens, and Firestore Security Rules determine authorization for Firebase-user requests. ([Firebase][8])
+
+---
+
+# 5. Recommended Agent Workflow
+
+## Startup Passport Workflow
+
+```text
+Startup uploads pitch deck / pastes description
+      ↓
+AI Passport Builder Agent
+      ↓
+Evidence Extraction Agent
+      ↓
+User reviews autofilled profile
+      ↓
+User confirms profile
+      ↓
+Eligibility Agent
+      ↓
+Readiness & Risk Agent
+      ↓
+Passport & Stamp Agent
+      ↓
+Admin Verification Workspace
+      ↓
+Admin issues passport
+      ↓
+Linkage Recommendation Agent
+      ↓
+Linkages shown to admin/startup
+```
+
+## Mentor Passport Workflow
+
+```text
+Mentor uploads CV / pastes bio
+      ↓
+AI Passport Builder Agent
+      ↓
+Evidence Extraction Agent
+      ↓
+Mentor reviews autofilled profile
+      ↓
+Mentor confirms profile
+      ↓
+Eligibility Agent
+      ↓
+Readiness & Risk Agent
+      ↓
+Passport & Stamp Agent
+      ↓
+Admin issues Mentor Passport
+      ↓
+Linkage Recommendation Agent
+      ↓
+Mentor receives startup linkage requests
+```
+
+---
+
+# 6. What You Need to Build First
+
+## Build Order
+
+### 1. Firebase Auth
+
+Create login/signup and role selection.
+
+### 2. Startup AI Passport Builder
+
+Allow upload/paste startup description and generate autofilled profile.
+
+### 3. AI Verification Result
+
+Generate eligibility, readiness, missing evidence, risk flags.
+
+### 4. Admin Review Screen
+
+Show AI result and allow admin approval.
+
+### 5. Passport Issuance
+
+Generate Startup Passport with stamps.
+
+### 6. Linkage Recommendation
+
+Recommend mentor, partner, programme, or advisor.
+
+### 7. Mentor Passport
+
+Add mentor flow if time allows.
+
+---
+
+# 7. MVP Agent Scope
+
+For hackathon, do not build all advanced logic.
+
+## Must Build
+
+| Agent                        | Must Work? |
+| ---------------------------- | ---------- |
+| Orchestrator Agent           | Yes        |
+| AI Passport Builder Agent    | Yes        |
+| Evidence Extraction Agent    | Yes        |
+| Eligibility Agent            | Yes        |
+| Readiness & Risk Agent       | Yes        |
+| Passport & Stamp Agent       | Yes        |
+| Linkage Recommendation Agent | Yes        |
+
+## Can Be Simplified
+
+| Area                | Simplification                       |
+| ------------------- | ------------------------------------ |
+| Document parsing    | Use pasted text or simple PDF upload |
+| Website extraction  | Let user paste website text          |
+| LinkedIn import     | Let mentor paste profile text        |
+| Voice input         | Skip for MVP                         |
+| QR verification     | Mock public verification page        |
+| PDF passport export | Optional                             |
+| Real email sending  | Skip or simulate                     |
+| Complex scoring     | Use prompt-based scoring             |
+
+---
+
+# 8. Recommended Firestore-Level Objects
+
+No need to overthink data model now, but conceptually you need:
+
+```text
+User
+Startup
+Mentor
+Document
+AutofillProfile
+VerificationResult
+Passport
+Stamp
+Badge
+Linkage
+AdminReview
+AuditLog
+```
+
+These map directly to your UI screens and agents.
+
+---
+
+# 9. Minimum Screens Needed for Demo
+
+Build these screens:
+
+| Screen                      | Purpose                       |
+| --------------------------- | ----------------------------- |
+| Landing Page                | Product story                 |
+| Login / Signup              | Product completeness          |
+| Role Selection              | Startup / mentor / admin path |
+| AI Passport Builder         | Zero-form onboarding          |
+| Autofilled Profile Review   | AI data entry benefit         |
+| AI Verification Result      | Intelligence layer            |
+| Admin Review Workspace      | Human-in-the-loop             |
+| Passport Issued Page        | Strong wow moment             |
+| Digital Passport Page       | Unique product concept        |
+| Linkage Recommendation Page | Problem statement alignment   |
+
+---
+
+# 10. Suggested Prompt Strategy
+
+Use separate prompts for each agent.
+
+## AI Passport Builder Prompt
+
+Goal:
+
+```text
+Extract structured profile fields from provided evidence.
+Return fields, confidence level, source, and missing fields.
+```
+
+## Eligibility Prompt
+
+Goal:
+
+```text
+Compare confirmed profile against programme criteria.
+Return eligibility score, decision recommendation, and explanation.
+```
+
+## Readiness & Risk Prompt
+
+Goal:
+
+```text
+Score readiness areas and identify risks, missing evidence, and inconsistencies.
+```
+
+## Passport & Stamp Prompt
+
+Goal:
+
+```text
+Recommend passport status, earned stamps, pending stamps, badges, and next actions.
+```
+
+## Linkage Prompt
+
+Goal:
+
+```text
+Recommend ecosystem linkages based on passport profile, stamps, missing evidence, and support needs.
+```
+
+---
+
+# 11. Best Technical Decision for Hackathon
+
+Use this simple setup:
+
+```text
+Frontend:
+Next.js + Tailwind
+
+Auth:
+Firebase Auth
+
+Database:
+Firestore
+
+File Storage:
+Cloud Storage
+
+Backend:
+Cloud Run API
+
+AI:
+Gemini API / Vertex AI Gemini
+
+Optional:
+Document AI for PDFs
+```
+
+This is enough to build a complete working prototype.
+
+---
+
+# 12. Final Recommendation
+
+Build **7 logical agents** and deploy them inside **one Cloud Run backend**.
+
+Do not build seven separate microservices for the hackathon.
+
+Your strongest technical story should be:
+
+> **TrustPass AI uses Gemini-powered agents on Google Cloud to convert startup and mentor evidence into structured passport profiles, verify readiness and eligibility, issue digital passports with stamps, and recommend trusted ecosystem linkages.**
+
+Your strongest demo flow:
+
+```text
+Pitch deck uploaded
+      ↓
+AI builds profile
+      ↓
+Founder confirms
+      ↓
+AI verifies
+      ↓
+Admin approves
+      ↓
+Passport issued
+      ↓
+Linkages recommended
+```
+
+[1]: https://firebase.google.com/docs/auth?utm_source=chatgpt.com "Firebase Authentication"
+[2]: https://firebase.google.com/docs/firestore?utm_source=chatgpt.com "Firestore | Firebase - Google"
+[3]: https://cloud.google.com/storage?utm_source=chatgpt.com "Cloud Storage"
+[4]: https://ai.google.dev/gemini-api/docs/function-calling?utm_source=chatgpt.com "Function calling with the Gemini API - Google AI for Developers"
+[5]: https://docs.cloud.google.com/document-ai/docs?utm_source=chatgpt.com "Document AI documentation"
+[6]: https://firebase.google.com/docs/firestore/data-model?utm_source=chatgpt.com "Cloud Firestore Data model - Firebase"
+[7]: https://docs.cloud.google.com/document-ai/docs/overview?utm_source=chatgpt.com "Document AI overview"
+[8]: https://firebase.google.com/docs/firestore/use-rest-api?utm_source=chatgpt.com "Use the Cloud Firestore REST API - Firebase - Google"

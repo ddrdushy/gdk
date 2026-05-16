@@ -1,0 +1,171 @@
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+
+@theme inline {
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-inter);
+  --font-mono: var(--font-geist-mono);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-navy-50: #f5f7fb;
+  --color-navy-100: #e9eef7;
+  --color-navy-200: #cbd6e8;
+  --color-navy-300: #9eb1d1;
+  --color-navy-400: #6c87b3;
+  --color-navy-500: #4a6691;
+  --color-navy-600: #344f76;
+  --color-navy-700: #243a5c;
+  --color-navy-800: #182947;
+  --color-navy-900: #0e1b34;
+  --color-navy-950: #060e1f;
+
+  --color-cyan-glow: #38bdf8;
+  --color-cyan-deep: #0ea5e9;
+
+  --color-stamp-verified: #10b981;
+  --color-stamp-pending: #f59e0b;
+  --color-stamp-risk: #ef4444;
+
+  --radius-lg: 14px;
+  --radius-md: 10px;
+  --radius-sm: 6px;
+}
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0e1b34;
+  --card: #ffffff;
+  --card-foreground: #0e1b34;
+  --popover: #ffffff;
+  --popover-foreground: #0e1b34;
+  --primary: #0e1b34;
+  --primary-foreground: #f8fafc;
+  --secondary: #e9eef7;
+  --secondary-foreground: #182947;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #e0f2fe;
+  --accent-foreground: #0c4a6e;
+  --destructive: #ef4444;
+  --destructive-foreground: #fef2f2;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #0ea5e9;
+}
+
+.dark {
+  --background: #060e1f;
+  --foreground: #f8fafc;
+  --card: #0e1b34;
+  --card-foreground: #f8fafc;
+  --popover: #0e1b34;
+  --popover-foreground: #f8fafc;
+  --primary: #38bdf8;
+  --primary-foreground: #060e1f;
+  --secondary: #182947;
+  --secondary-foreground: #f8fafc;
+  --muted: #182947;
+  --muted-foreground: #94a3b8;
+  --accent: #0e1b34;
+  --accent-foreground: #38bdf8;
+  --destructive: #f87171;
+  --destructive-foreground: #060e1f;
+  --border: #1e2f4f;
+  --input: #1e2f4f;
+  --ring: #38bdf8;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes stamp {
+  0% {
+    transform: scale(2) rotate(-12deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(0.95) rotate(-8deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(-8deg);
+    opacity: 1;
+  }
+}
+
+.passport-grain {
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.06) 1px, transparent 0);
+  background-size: 14px 14px;
+}
+
+.passport-foil {
+  background: linear-gradient(
+    135deg,
+    rgba(56, 189, 248, 0) 0%,
+    rgba(56, 189, 248, 0.18) 30%,
+    rgba(255, 255, 255, 0.25) 50%,
+    rgba(56, 189, 248, 0.18) 70%,
+    rgba(56, 189, 248, 0) 100%
+  );
+  background-size: 200% 200%;
+  animation: shimmer 6s ease infinite;
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(56, 189, 248, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.06) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
