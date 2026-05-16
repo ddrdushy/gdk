@@ -450,20 +450,44 @@ Following the order in `docs/gcd steps`:
 - [x] Scaffold (Next.js, Tailwind, shadcn primitives, design tokens, Docker, README)
 - [x] Module 1 — Landing pages (8 pages: home, product, how-it-works, use-cases, passports, pricing, start, contact)
 - [x] Module 2 — Auth & role selection (Firebase Auth, login / signup / role picker / forgot password / 4 dashboards / Firestore rules)
-- [x] Module 3 — Startup Passport (AI-assisted profile builder; pitch deck / website / description sources; per-field confidence + source citation)
-- [x] Module 4 — AI Verification Engine (5 agents + orchestrator + SSE streaming): Evidence Extraction, Eligibility, Readiness & Risk, Passport & Stamp, Linkage Recommendation
+- [x] Module 3 — Startup + Mentor Passport (AI-assisted profile builder; pitch deck / website / description sources; per-field confidence + source citation)
+- [x] Module 4 — AI Verification Engine (7 agents + orchestrator + SSE streaming): Passport Builder, Evidence Extraction, Eligibility, Readiness & Risk, Passport & Stamp, Linkage Recommendation, plus the Intro Message agent used when admins activate a linkage
 - [x] Module 5 — Digital Passport view + public verification page (server-rendered via Firebase Admin)
 - [x] Module 6 — Admin Verification Workspace (review queue, AI explainer, approve / conditionally approve / request evidence / reject with auditable transactions)
-- [x] Module 7 — Ecosystem Linkage workspace (sequenced recommendations per verified startup)
-- [ ] Production: Cloud Run deploy, Document AI for messy PDFs, file upload to Cloud Storage, intro-message generator agent, mentor passport flow
+- [x] Module 7 — Ecosystem Linkage workspace (sequenced recommendations + AI intro-message generator + editable send-intro dialog)
+- [ ] Production: Cloud Run deploy, Document AI for messy PDFs, file upload to Cloud Storage, real intro email delivery (currently mocked)
+
+### Server-side API routes (Admin SDK)
+
+These bypass Firestore Security Rules by using the Admin SDK with a service account, which is the right pattern for admin reads / writes:
+
+```text
+POST /api/agents/passport-builder    AI extracts startup / mentor profile
+POST /api/agents/orchestrate         SSE stream of 5 verification agents
+POST /api/agents/intro-message       generates personalised intro
+GET  /api/admin/queue                list pending reviews
+GET  /api/admin/review/:id           profile + verification run for one startup
+GET  /api/admin/linkages             cross-startup linkage recommendations
+POST /api/admin/decisions            approve / conditionally / request evidence / reject
+                                     (transactional + audit log)
+```
+
+All admin endpoints verify a Firebase Auth ID token in the `Authorization: Bearer <token>` header and confirm the caller's `role` in Firestore is `admin` or `ecosystem-owner` before proceeding.
+
+### End-to-end Playwright tests
+
+Both critical journeys are verified headless:
+
+- **Founder**: signup → role → "Create Startup Passport" → paste pitch deck → AI extracts 14 fields → confirm → SSE-streamed 5-agent verification → passport renders with scores / risk flags / linkages.
+- **Admin**: signup as Programme Administrator → role + org → review queue (live data) → open review → Approve → decision recorded → linkages page → Activate → AI generates a personalised intro subject + body in an editable dialog.
 
 ### Required Google Cloud manual steps (before login works)
 
 1. Firebase Console → Authentication → enable **Email/Password** + **Google**
-2. Firebase Console → Firestore Database → Rules → paste `firestore.rules` and publish
-3. GCP IAM → Service Accounts → create `trustpass-server` (Firebase Admin SDK Administrator Service Agent + Cloud Datastore User + Storage Object Admin) → download JSON key → paste single line into `FIREBASE_SERVICE_ACCOUNT_JSON` in `.env.local`
+2. Firebase Console → Firestore Database → Rules → paste `firestore.rules` and publish, OR run `node scripts/deploy-firestore-rules.mjs` (uses your service-account credential, no `firebase login` needed)
+3. GCP IAM → Service Accounts → Firebase Console → Project Settings → **Service accounts** tab → **Generate new private key** → paste JSON contents (single line) into `FIREBASE_SERVICE_ACCOUNT_JSON` in `.env.local`
 
-The public passport page (`/passport/[uid]`) and the admin decision API both require the service account.
+The public passport page (`/passport/[uid]`), every `/api/admin/*` route, and `/api/agents/intro-message` all require the service account.
 
 ---
 
