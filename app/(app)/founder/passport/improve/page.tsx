@@ -20,6 +20,34 @@ import {
   type StampResult,
 } from "@/lib/schemas/verification";
 
+/**
+ * Build a context-aware placeholder for the new-evidence textarea.
+ *
+ * Priority:
+ *   1. If the agent gave a concrete Next Action, echo it verbatim — the
+ *      user sees the exact items requested ("financial statements for
+ *      the last 3 years, client contracts, BNM RMiT…") instead of a
+ *      generic suggestion list.
+ *   2. Otherwise fall back to per-stamp reasons, which usually list
+ *      the gaps directly.
+ *   3. If neither is available (no run yet), use a neutral hint.
+ */
+function buildPlaceholder(
+  nextAction: string | undefined,
+  pendingStamps: Array<{ key: string; reason: string }>
+): string {
+  if (nextAction && nextAction.length > 10) {
+    return `Address the items above. For example:\n\n${nextAction}`;
+  }
+  if (pendingStamps.length > 0) {
+    return (
+      "Address the pending stamps above. For example:\n\n" +
+      pendingStamps.map((s) => `• ${s.key.replace(/-/g, " ")}: ${s.reason}`).join("\n")
+    );
+  }
+  return "Paste any new evidence here — pilot report, funding letter, regulatory approval, additional traction metrics, customer testimonials, etc.";
+}
+
 export default function ImprovePassportPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -153,7 +181,7 @@ export default function ImprovePassportPage() {
         </p>
       </div>
 
-      {/* What needs addressing */}
+      {/* What needs addressing — per-stamp specifics, not generic */}
       {(nextAction || adminNote || pendingStamps.length > 0) && (
         <Card className="mt-6 p-5 border-amber-200 bg-amber-50/40">
           <div className="flex items-start gap-3">
@@ -161,25 +189,30 @@ export default function ImprovePassportPage() {
               <AlertTriangle className="h-4 w-4" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-navy-950">What still needs evidence</p>
+              <p className="text-sm font-semibold text-navy-950">What the AI is asking for</p>
               {nextAction && (
-                <p className="mt-1 text-sm text-navy-700">
-                  <span className="font-medium">AI recommendation:</span> {nextAction}
-                </p>
+                <p className="mt-1.5 text-sm text-navy-700">{nextAction}</p>
               )}
               {adminNote && (
-                <p className="mt-1 text-sm text-navy-700">
+                <p className="mt-2 text-sm text-navy-700">
                   <span className="font-medium">Admin note:</span> {adminNote}
                 </p>
               )}
               {pendingStamps.length > 0 && (
-                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                <ul className="mt-3 space-y-2">
                   {pendingStamps.map((s) => (
-                    <Badge key={s.key} variant="pending" className="capitalize">
-                      {s.key.replace(/-/g, " ")}
-                    </Badge>
+                    <li key={s.key} className="rounded-lg border border-amber-200/70 bg-white p-3">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-1.5 w-1.5 rounded-full bg-amber-500" />
+                        <p className="text-[13px] font-semibold capitalize text-navy-900">
+                          {s.key.replace(/-/g, " ")}
+                          <span className="ml-1.5 font-normal text-navy-500">— pending</span>
+                        </p>
+                      </div>
+                      <p className="mt-1 text-[12.5px] leading-relaxed text-navy-700">{s.reason}</p>
+                    </li>
                   ))}
-                </div>
+                </ul>
               )}
             </div>
           </div>
@@ -220,7 +253,7 @@ export default function ImprovePassportPage() {
             id="new-evidence"
             value={newEvidence}
             onChange={(e) => setNewEvidence(e.target.value)}
-            placeholder="Paste new evidence here — e.g. pilot report, funding letter, regulatory approval, additional traction metrics, customer testimonials…"
+            placeholder={buildPlaceholder(nextAction, pendingStamps)}
             rows={10}
             className="min-h-[220px]"
           />
