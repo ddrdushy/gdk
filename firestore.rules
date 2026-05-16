@@ -33,7 +33,9 @@ service cloud.firestore {
     // initial sign-up handshake. Admin features that need to read other
     // users go through server-side routes (Admin SDK bypasses rules).
     match /users/{uid} {
-      allow read, create, update: if isOwner(uid);
+      allow get: if isOwner(uid);
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid);
       allow delete: if false;
     }
 
