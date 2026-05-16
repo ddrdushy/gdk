@@ -3,6 +3,7 @@ import { z } from "zod";
 import { extractText, getDocumentProxy } from "unpdf";
 import { convert as htmlToText } from "html-to-text";
 import { parseOffice } from "officeparser";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,15 +91,24 @@ async function handleFile(req: NextRequest) {
   try {
     const buf = Buffer.from(await file.arrayBuffer());
     let raw = kind === "pdf" ? await extractPdf(buf) : await extractOffice(buf);
+    let usedVision = false;
 
-    // PDF fallback: if unpdf returns empty (some Keynote/PowerPoint-exported
-    // PDFs encode text as glyph paths that unpdf can't read), retry with
-    // officeparser which uses a different parser.
+    // PDF fallback chain:
+    //   1. unpdf failed → try officeparser's PDF parser
+    //   2. still empty  → Gemini vision OCR (multimodal, reads images in PDF)
     if (kind === "pdf" && !raw.trim()) {
       try {
         raw = await extractOffice(buf);
       } catch {
-        // ignore — original error will be reported below
+        /* fall through to vision */
+      }
+    }
+    if (kind === "pdf" && !raw.trim() && process.env.GEMINI_API_KEY) {
+      try {
+        raw = await extractPdfWithVision(buf);
+        usedVision = true;
+      } catch (err) {
+        console.warn("vision OCR failed", err);
       }
     }
 
@@ -109,7 +119,7 @@ async function handleFile(req: NextRequest) {
           error: `No readable text in this ${kind.toUpperCase()}.`,
           hint:
             kind === "pdf"
-              ? "Looks like a scanned / image-only PDF. Run OCR first (macOS Preview → Export as Text, or Adobe Acrobat), or paste the content directly."
+              ? "Even Gemini vision OCR couldn't read the file. Check that the PDF actually contains content and isn't corrupted."
               : "Slides may be image-heavy. Paste the speaker notes or descriptions instead.",
         },
         { status: 422 }
@@ -122,6 +132,7 @@ async function handleFile(req: NextRequest) {
         source: kind,
         chars: trimmed.length,
         filename: file.name,
+        ocr: usedVision || undefined,
       },
     });
   } catch (err) {
@@ -137,6 +148,47 @@ async function handleFile(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * Last-resort PDF extraction: send the raw PDF bytes to Gemini and let
+ * its multimodal model read the slides as images. Works for scans,
+ * Keynote / Canva exports, and any other PDF where the text is encoded
+ * as graphics.
+ *
+ * Uses GEMINI_API_KEY (the same direct-Gemini provider in lib/gemini/client).
+ * Costs more than text extraction and takes 5–20 s on a real deck.
+ */
+async function extractPdfWithVision(buf: Buffer): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
+  const client = new GoogleGenerativeAI(apiKey);
+  const model = client.getGenerativeModel({
+    // Gemini 2.5 Flash supports PDF input directly. Override via env if needed.
+    model: process.env.GEMINI_VISION_MODEL ?? "gemini-2.5-flash",
+    generationConfig: { temperature: 0.1 },
+  });
+
+  const result = await model.generateContent([
+    {
+      inlineData: {
+        mimeType: "application/pdf",
+        data: buf.toString("base64"),
+      },
+    },
+    `You are reading a document and extracting its text content.
+
+Output the text content of every page in reading order. Preserve:
+- slide titles or section headings (one per line, no markdown)
+- bullets and list items as separate lines
+- tables as tab-separated rows
+- captions and labels
+
+Skip purely decorative imagery. Do not narrate, do not summarize,
+do not wrap in JSON or code fences — return the raw text only.`,
+  ]);
+
+  return result.response.text();
 }
 
 async function extractPdf(buf: Buffer): Promise<string> {

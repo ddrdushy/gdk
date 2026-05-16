@@ -41,7 +41,8 @@ export function EvidenceImporter({ onExtracted, disabled, urlDisabled }: Evidenc
       if (!res.ok) throw new Error(`${data.error ?? "Extract failed"}${data.hint ? ` — ${data.hint}` : ""}`);
       onExtracted(data.text as string, file.name);
       setLastImport({ source: "pdf", label: file.name, chars: data.meta?.chars ?? 0 });
-      toast.success(`Extracted ${(data.meta?.chars ?? 0).toLocaleString()} chars from ${file.name}`);
+      const ocrNote = data.meta?.ocr ? " (Gemini vision OCR)" : "";
+      toast.success(`Extracted ${(data.meta?.chars ?? 0).toLocaleString()} chars from ${file.name}${ocrNote}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not parse file");
     } finally {
