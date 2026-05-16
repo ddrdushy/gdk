@@ -2,104 +2,160 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { extractText, getDocumentProxy } from "unpdf";
 import { convert as htmlToText } from "html-to-text";
+import { parseOffice } from "officeparser";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MB (PPTX with images runs bigger)
 const MAX_HTML_BYTES = 5 * 1024 * 1024; // 5 MB after fetch
-const MAX_OUTPUT_CHARS = 24_000; // keep room for the Gemini prompt
+const MAX_OUTPUT_CHARS = 24_000; // keep room for the AI prompt
+
+type DocKind = "pdf" | "pptx" | "docx" | "xlsx";
+
+const EXT_TO_KIND: Record<string, DocKind> = {
+  ".pdf": "pdf",
+  ".pptx": "pptx",
+  ".ppt": "pptx", // best-effort — officeparser will reject true binary .ppt
+  ".docx": "docx",
+  ".doc": "docx",
+  ".xlsx": "xlsx",
+  ".xls": "xlsx",
+};
+
+function detectKind(file: File): DocKind | null {
+  const name = file.name.toLowerCase();
+  for (const ext of Object.keys(EXT_TO_KIND)) {
+    if (name.endsWith(ext)) return EXT_TO_KIND[ext];
+  }
+  if (file.type === "application/pdf") return "pdf";
+  if (file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation") return "pptx";
+  if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return "docx";
+  if (file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") return "xlsx";
+  return null;
+}
 
 /**
  * POST /api/extract
  *
  * Two shapes, distinguished by Content-Type:
  *
- * 1. multipart/form-data
- *    - field "file" — required, PDF (.pdf) up to 10 MB
- *    Returns { text, meta: { source: "pdf", pages, chars } }
+ * 1. multipart/form-data with field "file"
+ *    Supported formats: .pdf, .pptx (.ppt best-effort), .docx, .xlsx, up to 15 MB
+ *    Returns { text, meta: { source: <kind>, pages, chars, filename } }
  *
- * 2. application/json
- *    - { url: "https://…" }
- *    Server fetches the URL, strips HTML, returns plain text.
+ * 2. application/json { url: "https://…" }
+ *    Server fetches, strips HTML, returns plain text.
  *    Returns { text, meta: { source: "url", chars, finalUrl } }
- *
- * Errors are JSON: { error, hint? }.
  */
 export async function POST(req: NextRequest) {
   const ct = req.headers.get("content-type") ?? "";
-
-  if (ct.includes("multipart/form-data")) {
-    return handlePdf(req);
-  }
-  if (ct.includes("application/json")) {
-    return handleUrl(req);
-  }
+  if (ct.includes("multipart/form-data")) return handleFile(req);
+  if (ct.includes("application/json")) return handleUrl(req);
   return NextResponse.json(
     { error: "Unsupported Content-Type. Use multipart/form-data (file) or application/json ({ url })." },
     { status: 415 }
   );
 }
 
-async function handlePdf(req: NextRequest) {
+async function handleFile(req: NextRequest) {
   let form: FormData;
   try {
     form = await req.formData();
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: "Bad multipart body" }, { status: 400 });
   }
   const file = form.get("file");
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "Missing `file`" }, { status: 400 });
   }
-  if (file.size > MAX_PDF_BYTES) {
+  if (file.size > MAX_UPLOAD_BYTES) {
     return NextResponse.json(
-      { error: `File is ${(file.size / 1024 / 1024).toFixed(1)}MB — limit is 10MB.` },
+      { error: `File is ${(file.size / 1024 / 1024).toFixed(1)}MB — limit is 15MB.` },
       { status: 413 }
     );
   }
-  const isPdf =
-    file.type === "application/pdf" ||
-    file.name.toLowerCase().endsWith(".pdf");
-  if (!isPdf) {
+  const kind = detectKind(file);
+  if (!kind) {
     return NextResponse.json(
-      { error: "Only PDF uploads are supported right now." },
+      {
+        error: "Unsupported file format.",
+        hint: "Accepted: PDF, PPTX/PPT, DOCX, XLSX. Convert other formats first.",
+      },
       { status: 415 }
     );
   }
 
   try {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const pdf = await getDocumentProxy(bytes);
-    const { text: pages } = await extractText(pdf, { mergePages: false });
-    const joined = (Array.isArray(pages) ? pages.join("\n\n") : String(pages)).trim();
-    if (!joined) {
+    const buf = Buffer.from(await file.arrayBuffer());
+    let raw = kind === "pdf" ? await extractPdf(buf) : await extractOffice(buf);
+
+    // PDF fallback: if unpdf returns empty (some Keynote/PowerPoint-exported
+    // PDFs encode text as glyph paths that unpdf can't read), retry with
+    // officeparser which uses a different parser.
+    if (kind === "pdf" && !raw.trim()) {
+      try {
+        raw = await extractOffice(buf);
+      } catch {
+        // ignore — original error will be reported below
+      }
+    }
+
+    const cleaned = raw.trim();
+    if (!cleaned) {
       return NextResponse.json(
         {
-          error: "No text extracted from this PDF.",
-          hint: "If the file is a scan, run OCR first (e.g. Preview → Export as Text), then paste the text.",
+          error: `No readable text in this ${kind.toUpperCase()}.`,
+          hint:
+            kind === "pdf"
+              ? "Looks like a scanned / image-only PDF. Run OCR first (macOS Preview → Export as Text, or Adobe Acrobat), or paste the content directly."
+              : "Slides may be image-heavy. Paste the speaker notes or descriptions instead.",
         },
         { status: 422 }
       );
     }
-    const trimmed = joined.slice(0, MAX_OUTPUT_CHARS);
+    const trimmed = cleaned.slice(0, MAX_OUTPUT_CHARS);
     return NextResponse.json({
       text: trimmed,
       meta: {
-        source: "pdf",
-        pages: Array.isArray(pages) ? pages.length : 1,
+        source: kind,
         chars: trimmed.length,
         filename: file.name,
       },
     });
   } catch (err) {
-    console.error("pdf extract failed", err);
+    console.error(`${kind} extract failed`, err);
     return NextResponse.json(
-      { error: "Could not parse this PDF.", hint: "Try a different export — flattened text, not images." },
+      {
+        error: `Could not parse this ${kind.toUpperCase()}.`,
+        hint:
+          kind === "pdf"
+            ? "Try a different export — flattened text, not images."
+            : "Try saving as PDF and uploading that, or paste the slide content directly.",
+      },
       { status: 500 }
     );
   }
+}
+
+async function extractPdf(buf: Buffer): Promise<string> {
+  const pdf = await getDocumentProxy(new Uint8Array(buf));
+  const { text: pages } = await extractText(pdf, { mergePages: false });
+  return (Array.isArray(pages) ? pages.join("\n\n") : String(pages));
+}
+
+async function extractOffice(buf: Buffer): Promise<string> {
+  // officeparser handles .pptx, .docx, .xlsx, .odt, .odp, .ods.
+  // Old binary .ppt / .doc / .xls are not supported — those throw and we
+  // surface the upstream error to the user.
+  // parseOffice() returns an AST object with a .toText() method.
+  const ast = await parseOffice(buf);
+  if (typeof ast === "string") return ast;
+  if (ast && typeof (ast as { toText?: () => string }).toText === "function") {
+    return (ast as { toText: () => string }).toText();
+  }
+  return "";
 }
 
 const urlBodySchema = z.object({

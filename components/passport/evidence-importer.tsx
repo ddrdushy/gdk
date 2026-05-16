@@ -84,7 +84,7 @@ export function EvidenceImporter({ onExtracted, disabled, urlDisabled }: Evidenc
           <input
             ref={fileRef}
             type="file"
-            accept="application/pdf,.pdf"
+            accept=".pdf,.pptx,.ppt,.docx,.doc,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             className="sr-only"
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -102,10 +102,12 @@ export function EvidenceImporter({ onExtracted, disabled, urlDisabled }: Evidenc
             {uploading ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Extracting…</>
             ) : (
-              <><FileUp className="h-4 w-4" /> Upload PDF (CV / pitch deck)</>
+              <><FileUp className="h-4 w-4" /> Upload pitch deck or CV</>
             )}
           </Button>
-          <p className="mt-1 text-[10.5px] text-navy-500">Up to 10MB · text-based PDFs only</p>
+          <p className="mt-1 text-[10.5px] text-navy-500">
+            PDF, PPTX, DOCX up to 15MB · text-based only (no scans)
+          </p>
         </div>
 
         {/* URL fetch */}
