@@ -115,6 +115,9 @@ export default function ReviewPassportPage() {
           status: "submitted",
           autofill: draft?.autofill,
           source: draft?.source,
+          // Persist raw evidence text so the founder can append more later
+          // (improve flow) without losing the original context.
+          evidence: draft?.evidence ?? "",
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         },

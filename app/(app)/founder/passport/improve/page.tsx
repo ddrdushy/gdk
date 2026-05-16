@@ -1,0 +1,251 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { ArrowLeft, ArrowRight, Loader2, Sparkles, AlertTriangle, FileText } from "lucide-react";
+import { toast } from "sonner";
+import { useAuth } from "@/lib/auth/auth-provider";
+import { getDb } from "@/lib/firebase/client";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { EvidenceImporter } from "@/components/passport/evidence-importer";
+import { EvidenceCharCounter } from "@/components/passport/evidence-char-counter";
+import { startupProfileSchema, type StartupProfile } from "@/lib/schemas/passport";
+import {
+  stampAgentSchema,
+  type StampResult,
+} from "@/lib/schemas/verification";
+
+export default function ImprovePassportPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+
+  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<StartupProfile | null>(null);
+  const [existingEvidence, setExistingEvidence] = useState<string>("");
+  const [stamps, setStamps] = useState<StampResult | null>(null);
+  const [adminNote, setAdminNote] = useState<string | null>(null);
+  const [newEvidence, setNewEvidence] = useState<string>("");
+  const [importedLabel, setImportedLabel] = useState<string>("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const db = getDb();
+        const [profileSnap, runSnap] = await Promise.all([
+          getDoc(doc(db, "startups", user.uid)),
+          getDoc(doc(db, "verification_results", user.uid)),
+        ]);
+        if (!profileSnap.exists()) {
+          router.replace("/founder/passport/new");
+          return;
+        }
+        const data = profileSnap.data();
+        const parsed = startupProfileSchema.safeParse(data);
+        if (!parsed.success) {
+          router.replace("/founder/passport/new");
+          return;
+        }
+        if (!cancelled) {
+          setProfile(parsed.data);
+          setExistingEvidence((data.evidence as string) ?? "");
+          setAdminNote((data.adminNote as string) ?? null);
+          if (runSnap.exists()) {
+            const run = runSnap.data();
+            const parsedStamps = run.stamps ? stampAgentSchema.safeParse(run.stamps) : null;
+            if (parsedStamps?.success) setStamps(parsedStamps.data);
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user, router]);
+
+  async function onSubmit() {
+    if (!user || !profile) return;
+    if (!newEvidence.trim()) {
+      toast.error("Add new evidence first — paste text or upload a file.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const db = getDb();
+      // Append the new evidence to the existing field with a separator,
+      // then re-flag as "submitted" so the verification page treats it as
+      // a fresh run.
+      const combined = [
+        existingEvidence,
+        `\n\n--- ADDITIONAL EVIDENCE${importedLabel ? ` (${importedLabel})` : ""} (${new Date().toISOString().slice(0, 10)}) ---\n\n`,
+        newEvidence.trim(),
+      ].filter(Boolean).join("");
+      await setDoc(
+        doc(db, "startups", user.uid),
+        {
+          evidence: combined,
+          status: "submitted",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      // The verifying page reads draft from localStorage. Re-seed it so the
+      // page can submit to the orchestrator without a roundtrip.
+      window.localStorage.setItem(
+        "trustpass:draft:startup",
+        JSON.stringify({
+          source: "manual",
+          sourceLabel: "improved evidence",
+          evidence: combined,
+          confirmedProfile: profile,
+          createdAt: Date.now(),
+        })
+      );
+      toast.success("Re-running AI verification with the new evidence…");
+      router.push("/founder/passport/verifying");
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : "Could not save evidence");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-navy-400" />
+      </div>
+    );
+  }
+
+  if (!profile) return null;
+
+  const pendingStamps = stamps?.stamps?.filter((s) => s.status === "pending") ?? [];
+  const nextAction = stamps?.nextAction;
+
+  return (
+    <div className="mx-auto max-w-3xl px-6 py-10 lg:px-8">
+      <Button asChild variant="ghost" size="sm" className="-ml-2">
+        <Link href="/founder/passport">
+          <ArrowLeft className="h-4 w-4" /> Back to passport
+        </Link>
+      </Button>
+
+      <div className="mt-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-deep">
+          Add more evidence
+        </p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-navy-950">
+          Address what the AI flagged.
+        </h1>
+        <p className="mt-1 text-sm text-navy-600">
+          Upload new docs or paste text. We&apos;ll re-run all 5 agents with the combined evidence and update your stamps.
+        </p>
+      </div>
+
+      {/* What needs addressing */}
+      {(nextAction || adminNote || pendingStamps.length > 0) && (
+        <Card className="mt-6 p-5 border-amber-200 bg-amber-50/40">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-amber-500 text-white">
+              <AlertTriangle className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-navy-950">What still needs evidence</p>
+              {nextAction && (
+                <p className="mt-1 text-sm text-navy-700">
+                  <span className="font-medium">AI recommendation:</span> {nextAction}
+                </p>
+              )}
+              {adminNote && (
+                <p className="mt-1 text-sm text-navy-700">
+                  <span className="font-medium">Admin note:</span> {adminNote}
+                </p>
+              )}
+              {pendingStamps.length > 0 && (
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  {pendingStamps.map((s) => (
+                    <Badge key={s.key} variant="pending" className="capitalize">
+                      {s.key.replace(/-/g, " ")}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Already submitted (collapsed) */}
+      {existingEvidence && (
+        <details className="mt-6 rounded-xl border border-navy-100 bg-white p-4 text-sm">
+          <summary className="cursor-pointer font-medium text-navy-700">
+            <span className="inline-flex items-center gap-2">
+              <FileText className="h-4 w-4 text-navy-400" />
+              Already on file — {existingEvidence.length.toLocaleString()} chars
+            </span>
+          </summary>
+          <pre className="mt-3 max-h-[200px] overflow-auto rounded-md bg-navy-50/60 p-3 text-[12px] leading-relaxed text-navy-700 whitespace-pre-wrap font-sans">
+            {existingEvidence.slice(0, 4000)}
+            {existingEvidence.length > 4000 ? "\n\n… (truncated)" : ""}
+          </pre>
+        </details>
+      )}
+
+      {/* New evidence input */}
+      <Card className="mt-6 p-6 space-y-4">
+        <EvidenceImporter
+          onExtracted={(text, label) => {
+            setNewEvidence((prev) => (prev ? prev + "\n\n" : "") + text);
+            setImportedLabel(label);
+          }}
+          disabled={submitting}
+        />
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-navy-800" htmlFor="new-evidence">
+            New evidence
+          </label>
+          <Textarea
+            id="new-evidence"
+            value={newEvidence}
+            onChange={(e) => setNewEvidence(e.target.value)}
+            placeholder="Paste new evidence here — e.g. pilot report, funding letter, regulatory approval, additional traction metrics, customer testimonials…"
+            rows={10}
+            className="min-h-[220px]"
+          />
+          <EvidenceCharCounter chars={newEvidence.length} />
+        </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+          <Button asChild variant="outline" size="lg">
+            <Link href="/founder/passport">Cancel</Link>
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            size="lg"
+            onClick={onSubmit}
+            disabled={submitting || newEvidence.trim().length < 30}
+          >
+            {submitting ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> Submitting…</>
+            ) : (
+              <><Sparkles className="h-4 w-4" /> Re-run AI verification <ArrowRight className="h-4 w-4" /></>
+            )}
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}

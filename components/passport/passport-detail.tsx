@@ -1,10 +1,12 @@
 "use client";
 
-import { Sparkles, ShieldCheck, AlertTriangle, FileText, CheckCircle2, Network } from "lucide-react";
+import Link from "next/link";
+import { Sparkles, AlertTriangle, FileText, CheckCircle2, Network, ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PassportBooklet } from "@/components/passport/passport-booklet";
-import { StampBadge, type StampKey } from "@/components/passport/stamp-badge";
+import { type StampKey } from "@/components/passport/stamp-badge";
 import type { StartupProfile } from "@/lib/schemas/passport";
 import type {
   EvidenceResult,
@@ -294,6 +296,13 @@ export function PassportDetail({
               <p className="mt-1.5 text-sm leading-relaxed text-navy-700">
                 {stamps.nextAction}
               </p>
+              {!publicView && (
+                <Button asChild variant="primary" size="sm" className="mt-3 w-full">
+                  <Link href="/founder/passport/improve">
+                    Add more evidence <ArrowRight className="h-3 w-3" />
+                  </Link>
+                </Button>
+              )}
             </Card>
           )}
 

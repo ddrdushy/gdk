@@ -139,16 +139,25 @@ export default function FounderDashboard() {
 
           {/* Action card */}
           <Card className="mt-8 p-6">
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-deep">Next steps</p>
                 <p className="mt-2 text-sm leading-relaxed text-navy-700">
                   {nextStepCopy(stats?.status, stats?.stamps?.pending ?? 0)}
                 </p>
               </div>
-              <Button asChild variant="outline" size="sm" className="flex-none">
-                <Link href="/founder/passport">View full passport <ArrowRight className="h-3 w-3" /></Link>
-              </Button>
+              <div className="flex flex-none flex-col gap-2 sm:items-end">
+                {needsMoreEvidence(stats?.status, stats?.stamps?.pending ?? 0) && (
+                  <Button asChild variant="primary" size="sm">
+                    <Link href="/founder/passport/improve">
+                      Add more evidence <ArrowRight className="h-3 w-3" />
+                    </Link>
+                  </Button>
+                )}
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/founder/passport">View full passport <ArrowRight className="h-3 w-3" /></Link>
+                </Button>
+              </div>
             </div>
           </Card>
         </>
@@ -238,6 +247,12 @@ function bgForStatus(status?: string) {
   if (status === "needs-review" || status === "rejected") return "bg-rose-500 text-white";
   return "bg-navy-100 text-navy-600";
 }
+function needsMoreEvidence(status?: string, pending = 0): boolean {
+  if (!status) return false;
+  if (pending > 0) return true;
+  return ["pending-evidence", "needs-review", "conditionally-verified", "rejected"].includes(status);
+}
+
 function nextStepCopy(status?: string, pending = 0): string {
   switch (status) {
     case "verified":

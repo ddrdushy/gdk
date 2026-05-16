@@ -145,10 +145,10 @@ export default function VerifyingPage() {
         </h1>
         <p className="mt-2 text-sm text-navy-600">
           {done
-            ? "Your profile has been reviewed by 5 Gemini agents."
+            ? "Your profile has been reviewed by 5 AI agents."
             : error
               ? "We hit a snag. You can retry from the dashboard."
-              : "Five Gemini agents are reviewing your profile. This usually takes 30–60 seconds."}
+              : "Five AI agents are reviewing your profile. Usually 30–60 s; longer when we fall through to a slower provider."}
         </p>
       </div>
 

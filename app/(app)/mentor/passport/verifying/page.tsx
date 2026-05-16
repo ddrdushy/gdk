@@ -133,10 +133,10 @@ export default function MentorVerifyingPage() {
         </h1>
         <p className="mt-2 text-sm text-navy-600">
           {done
-            ? "5 Gemini agents reviewed your profile. Admin will issue your Mentor Passport."
+            ? "5 AI agents reviewed your profile. Admin will issue your Mentor Passport."
             : error
               ? "We hit a snag. You can retry from the dashboard."
-              : "Five Gemini agents are reviewing your profile. This usually takes 30–60 seconds."}
+              : "Five AI agents are reviewing your profile. Usually 30–60 s; longer when we fall through to a slower provider."}
         </p>
       </div>
 

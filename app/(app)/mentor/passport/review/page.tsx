@@ -114,6 +114,7 @@ export default function ReviewMentorPage() {
           status: "submitted",
           autofill: draft?.autofill,
           source: draft?.source,
+          evidence: draft?.evidence ?? "",
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         },

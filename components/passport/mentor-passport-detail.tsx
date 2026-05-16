@@ -1,6 +1,8 @@
 "use client";
 
-import { Sparkles, AlertTriangle, FileText, CheckCircle2, Users } from "lucide-react";
+import Link from "next/link";
+import { Sparkles, AlertTriangle, FileText, CheckCircle2, Users, ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PassportBooklet } from "@/components/passport/passport-booklet";
@@ -217,6 +219,13 @@ export function MentorPassportDetail({
                 Next action
               </p>
               <p className="mt-1.5 text-sm leading-relaxed text-navy-700">{stamps.nextAction}</p>
+              {!publicView && (
+                <Button asChild variant="primary" size="sm" className="mt-3 w-full">
+                  <Link href="/mentor/passport/improve">
+                    Add more evidence <ArrowRight className="h-3 w-3" />
+                  </Link>
+                </Button>
+              )}
             </Card>
           )}
 

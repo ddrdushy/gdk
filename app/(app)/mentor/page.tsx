@@ -129,9 +129,18 @@ export default function MentorDashboard() {
               Once an admin matches you with a startup, the intro will appear here. Linkages are sequenced
               based on the startup&apos;s verified readiness gaps and your expertise.
             </p>
-            <Button asChild variant="link" className="mt-3 px-0">
-              <Link href="/mentor/passport">View full passport <ArrowRight className="h-3 w-3" /></Link>
-            </Button>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {((stats?.stamps?.pending ?? 0) > 0 || stats?.status === "pending-evidence" || stats?.status === "conditionally-verified") && (
+                <Button asChild variant="primary" size="sm">
+                  <Link href="/mentor/passport/improve">
+                    Add more evidence <ArrowRight className="h-3 w-3" />
+                  </Link>
+                </Button>
+              )}
+              <Button asChild variant="outline" size="sm">
+                <Link href="/mentor/passport">View full passport <ArrowRight className="h-3 w-3" /></Link>
+              </Button>
+            </div>
           </Card>
         </>
       )}
