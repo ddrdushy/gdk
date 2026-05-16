@@ -115,12 +115,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const setRole = useCallback(
     async (role: UserRole, extras?: { organisationName?: string }) => {
-      if (!user) throw new Error("not signed in");
+      // Read from Firebase Auth directly — React state may not have caught
+      // up yet right after sign-up / sign-in (onAuthStateChanged is async).
+      const fbUser = getFirebaseAuth().currentUser ?? user;
+      if (!fbUser) throw new Error("not signed in");
       const db = getDb();
-      const ref = doc(db, "users", user.uid);
+      const ref = doc(db, "users", fbUser.uid);
       await setDoc(
         ref,
         {
+          uid: fbUser.uid,
+          email: fbUser.email ?? "",
+          displayName: fbUser.displayName,
           role,
           ...(extras?.organisationName ? { organisationName: extras.organisationName } : {}),
           onboardedAt: serverTimestamp(),
@@ -128,13 +134,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
         { merge: true }
       );
-      setProfile((p) => (p ? { ...p, role, ...(extras ?? {}) } : p));
+      setProfile((p) =>
+        p
+          ? { ...p, role, ...(extras ?? {}) }
+          : {
+              uid: fbUser.uid,
+              email: fbUser.email ?? "",
+              displayName: fbUser.displayName,
+              photoURL: fbUser.photoURL,
+              role,
+              ...(extras ?? {}),
+            }
+      );
     },
     [user]
   );
 
   const refreshProfile = useCallback(async () => {
-    if (user) await loadProfile(user);
+    const fbUser = getFirebaseAuth().currentUser ?? user;
+    if (fbUser) await loadProfile(fbUser);
   }, [user, loadProfile]);
 
   const value = useMemo(

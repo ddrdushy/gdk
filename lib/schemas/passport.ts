@@ -30,9 +30,9 @@ export const CONFIDENCE_LEVELS = ["high", "medium", "low"] as const;
 
 export const fieldWithConfidence = <T extends z.ZodTypeAny>(value: T) =>
   z.object({
-    value: value.nullable(),
-    confidence: z.enum(CONFIDENCE_LEVELS).optional(),
-    source: z.string().optional(),
+    value: value.nullable().optional(),
+    confidence: z.enum(CONFIDENCE_LEVELS).nullable().optional(),
+    source: z.string().nullable().optional(),
   });
 
 /**
