@@ -41,7 +41,18 @@ function SignupInner() {
       toast.success("Account created.");
       router.push("/role");
     } catch (err: unknown) {
-      toast.error(friendlyAuthError(err, "Sign-up failed"));
+      const code = err && typeof err === "object" && "code" in err ? String((err as { code: unknown }).code) : "";
+      if (code === "auth/email-already-in-use") {
+        toast.error("An account with that email already exists.", {
+          action: {
+            label: "Log in",
+            onClick: () => router.push(`/login?email=${encodeURIComponent(email)}`),
+          },
+          duration: 8000,
+        });
+      } else {
+        toast.error(friendlyAuthError(err, "Sign-up failed"));
+      }
     } finally {
       setSubmitting(false);
     }

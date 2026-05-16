@@ -17,6 +17,7 @@ function LoginInner() {
   const router = useRouter();
   const params = useSearchParams();
   const redirect = params.get("redirect");
+  const prefilledEmail = params.get("email") ?? "";
   const { signInWithEmail, signInWithGoogle, refreshProfile } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -69,7 +70,15 @@ function LoginInner() {
       <form className="mt-4 space-y-4" onSubmit={onSubmit}>
         <div className="space-y-1.5">
           <Label htmlFor="email">Email</Label>
-          <Input id="email" name="email" type="email" required autoComplete="email" placeholder="you@org.com" />
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            required
+            autoComplete="email"
+            placeholder="you@org.com"
+            defaultValue={prefilledEmail}
+          />
         </div>
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
