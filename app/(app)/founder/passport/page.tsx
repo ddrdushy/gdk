@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { doc, getDoc } from "firebase/firestore";
-import { Loader2, ExternalLink, Share2 } from "lucide-react";
+import { Loader2, ExternalLink, Share2, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth/auth-provider";
 import { getDb } from "@/lib/firebase/client";
@@ -37,6 +37,7 @@ export default function FounderPassportPage() {
   const { user, loading } = useAuth();
   const [data, setData] = useState<Loaded | null>(null);
   const [fetching, setFetching] = useState(true);
+  const [viewCount, setViewCount] = useState<number | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -78,6 +79,23 @@ export default function FounderPassportPage() {
     void load();
   }, [user]);
 
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/passports/${user.uid}/view`);
+        const j = await r.json();
+        if (!cancelled) setViewCount(Number(j.viewCount ?? 0));
+      } catch {
+        // ignore — counter just stays at last known value
+      }
+    };
+    void tick();
+    const id = setInterval(tick, 15_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [user]);
+
   if (loading || fetching) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
@@ -111,9 +129,17 @@ export default function FounderPassportPage() {
     <>
       <div className="border-b border-navy-100 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4 lg:px-8">
-          <p className="text-sm text-navy-600">
-            This is your live passport. Share the public link with investors and programmes.
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-navy-600">
+              This is your live passport. Share the public link with investors and programmes.
+            </p>
+            {viewCount !== null && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-navy-50 px-2.5 py-1 text-xs font-medium text-navy-700 ring-1 ring-navy-100">
+                <Eye className="h-3 w-3" />
+                {viewCount} {viewCount === 1 ? "view" : "views"}
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={onShare}>
               <Share2 className="h-4 w-4" /> Copy share link

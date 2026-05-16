@@ -86,15 +86,20 @@ export type StartupProfile = z.infer<typeof startupProfileSchema>;
 /**
  * Mentor autofill schema.
  */
+// Gemini occasionally returns a free-form text field as an array (e.g.
+// credentials as a list of items rather than a single paragraph). Accept
+// both shapes — the UI coerces to a comma-separated string at the input.
+const stringOrArray = z.union([z.string(), z.array(z.string())]);
+
 export const mentorAutofillSchema = z.object({
   mentorName: fieldWithConfidence(z.string()),
-  expertiseAreas: fieldWithConfidence(z.array(z.string())),
-  sectorFocus: fieldWithConfidence(z.array(z.string())),
+  expertiseAreas: fieldWithConfidence(stringOrArray),
+  sectorFocus: fieldWithConfidence(stringOrArray),
   country: fieldWithConfidence(z.string()),
   organisation: fieldWithConfidence(z.string()),
-  startupStageFit: fieldWithConfidence(z.array(z.string())),
+  startupStageFit: fieldWithConfidence(stringOrArray),
   availability: fieldWithConfidence(z.string()),
-  credentials: fieldWithConfidence(z.string()),
+  credentials: fieldWithConfidence(stringOrArray),
   bio: fieldWithConfidence(z.string()),
   linkedinUrl: fieldWithConfidence(z.string()),
   missingFields: z.array(z.string()).default([]),

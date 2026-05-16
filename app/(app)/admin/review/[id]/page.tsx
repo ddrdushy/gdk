@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { PassportDetail } from "@/components/passport/passport-detail";
+import { MentorPassportDetail } from "@/components/passport/mentor-passport-detail";
 import { startupProfileSchema, type StartupProfile } from "@/lib/schemas/passport";
+import { mentorProfileSchema, type MentorProfile } from "@/lib/schemas/mentor";
 import {
   evidenceAgentSchema,
   eligibilityAgentSchema,
@@ -23,6 +25,18 @@ import {
   type StampResult,
   type LinkageResult,
 } from "@/lib/schemas/verification";
+import {
+  mentorEvidenceSchema,
+  mentorEligibilitySchema,
+  mentorReadinessSchema,
+  mentorStampsSchema,
+  mentorMatchesSchema,
+  type MentorEvidenceResult,
+  type MentorEligibilityResult,
+  type MentorReadinessResult,
+  type MentorStampsResult,
+  type MentorMatchesResult,
+} from "@/lib/schemas/mentor-verification";
 import { formatPassportId } from "@/lib/utils";
 import { ADMIN_DECISIONS, DECISION_LABEL, type AdminDecision } from "@/lib/schemas/admin";
 import { cn } from "@/lib/utils";
@@ -43,12 +57,20 @@ export default function AdminReviewDetailPage({
   const router = useRouter();
   const { user } = useAuth();
 
-  const [profile, setProfile] = useState<StartupProfile | null>(null);
+  const [type, setType] = useState<"startup" | "mentor" | null>(null);
+  const [profile, setProfile] = useState<StartupProfile | MentorProfile | null>(null);
+  // Startup verification result fields
   const [evidence, setEvidence] = useState<EvidenceResult | undefined>();
   const [eligibility, setEligibility] = useState<EligibilityResult | undefined>();
   const [readiness, setReadiness] = useState<ReadinessResult | undefined>();
   const [stamps, setStamps] = useState<StampResult | undefined>();
   const [linkage, setLinkage] = useState<LinkageResult | undefined>();
+  // Mentor verification result fields
+  const [mEvidence, setMEvidence] = useState<MentorEvidenceResult | undefined>();
+  const [mEligibility, setMEligibility] = useState<MentorEligibilityResult | undefined>();
+  const [mReadiness, setMReadiness] = useState<MentorReadinessResult | undefined>();
+  const [mStamps, setMStamps] = useState<MentorStampsResult | undefined>();
+  const [mMatches, setMMatches] = useState<MentorMatchesResult | undefined>();
   const [loading, setLoading] = useState(true);
 
   const [decision, setDecision] = useState<AdminDecision | null>(null);
@@ -67,15 +89,30 @@ export default function AdminReviewDetailPage({
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
         if (cancelled) return;
-        const parsed = data.profile ? startupProfileSchema.safeParse(data.profile) : null;
-        setProfile(parsed?.success ? parsed.data : null);
-        const run = data.run as Record<string, unknown> | null;
-        if (run) {
-          setEvidence(run.evidence ? evidenceAgentSchema.safeParse(run.evidence).data : undefined);
-          setEligibility(run.eligibility ? eligibilityAgentSchema.safeParse(run.eligibility).data : undefined);
-          setReadiness(run.readiness ? readinessAgentSchema.safeParse(run.readiness).data : undefined);
-          setStamps(run.stamps ? stampAgentSchema.safeParse(run.stamps).data : undefined);
-          setLinkage(run.linkage ? linkageAgentSchema.safeParse(run.linkage).data : undefined);
+        const t = (data.type as "startup" | "mentor") ?? "startup";
+        setType(t);
+        if (t === "mentor") {
+          const parsed = data.profile ? mentorProfileSchema.safeParse(data.profile) : null;
+          setProfile(parsed?.success ? parsed.data : null);
+          const run = data.run as Record<string, unknown> | null;
+          if (run) {
+            setMEvidence(run.evidence ? mentorEvidenceSchema.safeParse(run.evidence).data : undefined);
+            setMEligibility(run.eligibility ? mentorEligibilitySchema.safeParse(run.eligibility).data : undefined);
+            setMReadiness(run.readiness ? mentorReadinessSchema.safeParse(run.readiness).data : undefined);
+            setMStamps(run.stamps ? mentorStampsSchema.safeParse(run.stamps).data : undefined);
+            setMMatches(run.matches ? mentorMatchesSchema.safeParse(run.matches).data : undefined);
+          }
+        } else {
+          const parsed = data.profile ? startupProfileSchema.safeParse(data.profile) : null;
+          setProfile(parsed?.success ? parsed.data : null);
+          const run = data.run as Record<string, unknown> | null;
+          if (run) {
+            setEvidence(run.evidence ? evidenceAgentSchema.safeParse(run.evidence).data : undefined);
+            setEligibility(run.eligibility ? eligibilityAgentSchema.safeParse(run.eligibility).data : undefined);
+            setReadiness(run.readiness ? readinessAgentSchema.safeParse(run.readiness).data : undefined);
+            setStamps(run.stamps ? stampAgentSchema.safeParse(run.stamps).data : undefined);
+            setLinkage(run.linkage ? linkageAgentSchema.safeParse(run.linkage).data : undefined);
+          }
         }
       } catch (err) {
         console.error(err);
@@ -135,7 +172,12 @@ export default function AdminReviewDetailPage({
     );
   }
 
-  const passportId = formatPassportId("ST", new Date().getFullYear(), 1);
+  const isMentor = type === "mentor";
+  const passportId = formatPassportId(isMentor ? "MN" : "ST", new Date().getFullYear(), 1);
+  const displayName = isMentor
+    ? (profile as MentorProfile).mentorName
+    : (profile as StartupProfile).startupName;
+  const recommendedStatus = isMentor ? mStamps?.recommendedStatus : stamps?.recommendedStatus;
 
   return (
     <>
@@ -146,19 +188,33 @@ export default function AdminReviewDetailPage({
               <ArrowLeft className="h-4 w-4" /> Back to queue
             </Link>
           </Button>
-          <p className="text-xs text-navy-500">Admin review · {profile.startupName}</p>
+          <p className="text-xs text-navy-500">
+            Admin review · {isMentor ? "Mentor" : "Startup"} · {displayName}
+          </p>
         </div>
       </div>
 
-      <PassportDetail
-        profile={profile}
-        passportId={passportId}
-        evidence={evidence}
-        eligibility={eligibility}
-        readiness={readiness}
-        stamps={stamps}
-        linkage={linkage}
-      />
+      {isMentor ? (
+        <MentorPassportDetail
+          profile={profile as MentorProfile}
+          passportId={passportId}
+          evidence={mEvidence}
+          eligibility={mEligibility}
+          readiness={mReadiness}
+          stamps={mStamps}
+          matches={mMatches}
+        />
+      ) : (
+        <PassportDetail
+          profile={profile as StartupProfile}
+          passportId={passportId}
+          evidence={evidence}
+          eligibility={eligibility}
+          readiness={readiness}
+          stamps={stamps}
+          linkage={linkage}
+        />
+      )}
 
       {/* Decision panel — sticky bottom */}
       <div className="sticky bottom-0 z-30 border-t border-navy-100 bg-white/95 backdrop-blur-xl">
@@ -168,7 +224,7 @@ export default function AdminReviewDetailPage({
               Your decision
             </p>
             <p className="mt-1 text-sm text-navy-700">
-              AI recommended <strong className="text-navy-950">{stamps?.recommendedStatus ?? "—"}</strong>. Confirm or override.
+              AI recommended <strong className="text-navy-950">{recommendedStatus ?? "—"}</strong>. Confirm or override.
             </p>
           </div>
 

@@ -11,6 +11,7 @@ import {
   linkageAgentSchema,
 } from "@/lib/schemas/verification";
 import { PassportDetail } from "@/components/passport/passport-detail";
+import { ViewTracker } from "@/components/passport/view-tracker";
 import { formatPassportId } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -97,6 +98,7 @@ export default async function PublicPassportPage({ params }: PublicPassportPageP
         linkage={linkage}
         publicView
       />
+      <ViewTracker passportId={id} />
     </div>
   );
 }

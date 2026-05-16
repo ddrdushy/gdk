@@ -8,11 +8,12 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 interface AdminQueueItem {
+  type: "startup" | "mentor";
   ownerUid: string;
-  startupName: string;
-  sector: string;
-  stage: string;
-  country: string;
+  displayName: string;
+  subtitleA: string;
+  subtitleB: string;
+  subtitleC: string;
   status: string;
 }
 
@@ -87,19 +88,23 @@ export default function ReviewQueuePage() {
         <div className="mt-8 space-y-3">
           {items.map((item) => {
             const status = STATUS_LABELS[item.status] ?? STATUS_LABELS.submitted;
+            const href = `/admin/review/${item.ownerUid}?type=${item.type}`;
             return (
               <Link
-                key={item.ownerUid}
-                href={`/admin/review/${item.ownerUid}`}
+                key={`${item.type}:${item.ownerUid}`}
+                href={href}
                 className="group flex items-center justify-between rounded-xl border border-navy-100 bg-white p-5 transition-all hover:border-navy-200 hover:shadow-md"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="text-base font-semibold text-navy-950">{item.startupName}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-base font-semibold text-navy-950">{item.displayName}</p>
+                    <Badge variant={item.type === "mentor" ? "accent" : "outline"}>
+                      {item.type === "mentor" ? "Mentor" : "Startup"}
+                    </Badge>
                     <Badge variant={status.variant}>{status.label}</Badge>
                   </div>
                   <p className="mt-1 text-xs text-navy-600">
-                    {item.sector} · {item.stage} · {item.country}
+                    {item.subtitleA} · {item.subtitleB} · {item.subtitleC}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 text-sm text-navy-600 group-hover:text-navy-900">

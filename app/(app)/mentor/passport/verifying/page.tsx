@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth/auth-provider";
 import { getDb } from "@/lib/firebase/client";
-import { loadDraft } from "@/lib/passport-store";
+import { loadMentorDraft } from "@/lib/passport-store";
 import { AgentResultCard, agentSummaries } from "@/components/passport/agent-result-card";
 
 interface AgentStep {
@@ -21,14 +21,14 @@ interface AgentStep {
 }
 
 const STEP_DEFS: Omit<AgentStep, "state">[] = [
-  { id: "evidence", label: "Evidence Extraction Agent", body: "Reading documents and identifying claims, proof, and gaps." },
-  { id: "eligibility", label: "Eligibility Agent", body: "Checking sector, stage, and programme alignment." },
-  { id: "readiness", label: "Readiness & Risk Agent", body: "Scoring business, technical, market, funding, partnership, compliance." },
-  { id: "stamps", label: "Passport & Stamp Agent", body: "Recommending earned, pending, and locked stamps + status." },
-  { id: "linkage", label: "Linkage Recommendation Agent", body: "Sequencing the most relevant mentors, partners, and programmes." },
+  { id: "evidence", label: "Evidence Extraction Agent", body: "Reading CV / bio, identifying claims and gaps." },
+  { id: "eligibility", label: "Eligibility Agent", body: "Checking expertise, sector focus, credentials, availability." },
+  { id: "readiness", label: "Readiness & Risk Agent", body: "Scoring expertise depth, credentials, and track record." },
+  { id: "stamps", label: "Passport & Stamp Agent", body: "Recommending mentor stamps and status." },
+  { id: "matches", label: "Startup Match Agent", body: "Identifying startup archetypes that fit this mentor." },
 ];
 
-export default function VerifyingPage() {
+export default function MentorVerifyingPage() {
   const router = useRouter();
   const { user } = useAuth();
   const [steps, setSteps] = useState<AgentStep[]>(() => STEP_DEFS.map((s) => ({ ...s, state: "idle" as const })));
@@ -40,9 +40,9 @@ export default function VerifyingPage() {
     if (started.current || !user) return;
     started.current = true;
 
-    const draft = loadDraft();
+    const draft = loadMentorDraft();
     if (!draft?.confirmedProfile || !draft.evidence) {
-      router.replace("/founder/passport/new");
+      router.replace("/mentor/passport/new");
       return;
     }
 
@@ -50,7 +50,7 @@ export default function VerifyingPage() {
 
     async function run(profile: Record<string, unknown>, evidence: string) {
       try {
-        const res = await fetch("/api/agents/orchestrate", {
+        const res = await fetch("/api/agents/orchestrate-mentor", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ profile, evidence }),
@@ -59,7 +59,6 @@ export default function VerifyingPage() {
           const text = await res.text();
           throw new Error(`Orchestrator HTTP ${res.status}: ${text.slice(0, 200)}`);
         }
-
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -77,9 +76,7 @@ export default function VerifyingPage() {
             try {
               const evt = JSON.parse(m[1]);
               handleEvent(evt, results);
-            } catch (e) {
-              console.warn("parse SSE line failed", e);
-            }
+            } catch (e) { console.warn("parse SSE line failed", e); }
           }
         }
 
@@ -88,7 +85,7 @@ export default function VerifyingPage() {
             doc(getDb(), "verification_results", user.uid),
             {
               ownerUid: user.uid,
-              type: "startup",
+              type: "mentor",
               status: "complete",
               ...results,
               startedAt: serverTimestamp(),
@@ -97,7 +94,7 @@ export default function VerifyingPage() {
             { merge: true }
           );
           await setDoc(
-            doc(getDb(), "startups", user.uid),
+            doc(getDb(), "mentors", user.uid),
             { status: "ai-verified", aiCompletedAt: serverTimestamp() },
             { merge: true }
           );
@@ -112,19 +109,10 @@ export default function VerifyingPage() {
 
     function handleEvent(evt: { type: string; agent?: string; result?: unknown; error?: string }, results: Record<string, unknown>) {
       if (evt.type === "agent:start" && evt.agent) {
-        setSteps((ss) =>
-          ss.map((s) => (s.id === evt.agent ? { ...s, state: "running" } : s))
-        );
+        setSteps((ss) => ss.map((s) => (s.id === evt.agent ? { ...s, state: "running" } : s)));
       } else if (evt.type === "agent:complete" && evt.agent) {
         results[evt.agent] = evt.result;
-        setSteps((ss) =>
-          ss.map((s) => (s.id === evt.agent ? { ...s, state: "done", result: evt.result } : s))
-        );
-      } else if (evt.type === "agent:error") {
-        setSteps((ss) =>
-          ss.map((s) => (s.id === evt.agent ? { ...s, state: "error" } : s))
-        );
-        setError(evt.error ?? "Agent failed");
+        setSteps((ss) => ss.map((s) => (s.id === evt.agent ? { ...s, state: "done", result: evt.result } : s)));
       } else if (evt.type === "run:error") {
         setError(evt.error ?? "Verification failed");
       }
@@ -145,7 +133,7 @@ export default function VerifyingPage() {
         </h1>
         <p className="mt-2 text-sm text-navy-600">
           {done
-            ? "Your profile has been reviewed by 5 Gemini agents."
+            ? "5 Gemini agents reviewed your profile. Admin will issue your Mentor Passport."
             : error
               ? "We hit a snag. You can retry from the dashboard."
               : "Five Gemini agents are reviewing your profile. This usually takes 30–60 seconds."}
@@ -178,14 +166,12 @@ export default function VerifyingPage() {
       <div className="mt-8 flex flex-col items-center gap-3">
         {done && (
           <Button asChild variant="primary" size="lg">
-            <a href="/founder/passport">
-              View your passport <ArrowRight className="h-4 w-4" />
-            </a>
+            <a href="/mentor/passport">View your passport <ArrowRight className="h-4 w-4" /></a>
           </Button>
         )}
         {error && (
           <Button asChild variant="outline" size="lg">
-            <a href="/founder">Back to dashboard</a>
+            <a href="/mentor">Back to dashboard</a>
           </Button>
         )}
       </div>

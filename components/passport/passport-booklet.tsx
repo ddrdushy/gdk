@@ -1,7 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ShieldCheck, QrCode, Sparkles } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
+import { ShieldCheck, Sparkles } from "lucide-react";
 import { StampBadge, type StampKey, type StampStatus } from "./stamp-badge";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +15,8 @@ export interface PassportBookletProps {
   passportId: string;
   status: "Verified" | "Conditionally Verified" | "Pending Evidence" | "Verified Mentor";
   stamps: Array<{ key: StampKey; status: StampStatus }>;
+  /** URL the QR code resolves to. Defaults to the demo passport. */
+  verificationUrl?: string;
   className?: string;
   variant?: "spread" | "cover";
   animate?: boolean;
@@ -26,11 +29,19 @@ export function PassportBooklet({
   passportId,
   status,
   stamps,
+  verificationUrl,
   className,
   variant = "spread",
   animate = true,
 }: PassportBookletProps) {
   const isStartup = type === "startup";
+  // Fall back to the marketing root for demo passports so the QR always
+  // resolves to something real for the demo deck.
+  const qrTarget =
+    verificationUrl ??
+    (typeof window !== "undefined"
+      ? `${window.location.origin}/passport/${passportId}`
+      : `https://trustpass.ai/passport/${passportId}`);
 
   if (variant === "cover") {
     return <PassportCover type={type} holderName={holderName} className={className} animate={animate} />;
@@ -77,8 +88,15 @@ export function PassportBooklet({
             </div>
           </div>
 
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-white/95 p-1.5 shadow-md">
-            <QrCode className="h-full w-full text-navy-900" strokeWidth={1.5} />
+          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-white p-1.5 shadow-md ring-1 ring-black/5">
+            <QRCodeSVG
+              value={qrTarget}
+              size={36}
+              bgColor="#ffffff"
+              fgColor="#0e1b34"
+              level="M"
+              marginSize={0}
+            />
           </div>
         </div>
 

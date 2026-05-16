@@ -23,6 +23,17 @@ async function requireAdmin(req: NextRequest) {
   }
 }
 
+interface QueueItem {
+  type: "startup" | "mentor";
+  ownerUid: string;
+  displayName: string;
+  subtitleA: string;
+  subtitleB: string;
+  subtitleC: string;
+  status: string;
+  updatedAt: number | null;
+}
+
 export async function GET(req: NextRequest) {
   const auth = await requireAdmin(req);
   if ("error" in auth) {
@@ -30,23 +41,45 @@ export async function GET(req: NextRequest) {
   }
   try {
     const db = adminDb();
-    const snap = await db
-      .collection("startups")
-      .where("status", "in", ["ai-verified", "needs-review", "submitted"])
-      .limit(50)
-      .get();
-    const items = snap.docs.map((d) => {
+    const statusFilter = ["ai-verified", "needs-review", "submitted"];
+
+    const [startupsSnap, mentorsSnap] = await Promise.all([
+      db.collection("startups").where("status", "in", statusFilter).limit(50).get(),
+      db.collection("mentors").where("status", "in", statusFilter).limit(50).get(),
+    ]);
+
+    const items: QueueItem[] = [];
+
+    for (const d of startupsSnap.docs) {
       const data = d.data();
-      return {
-        ownerUid: data.ownerUid ?? d.id,
-        startupName: data.startupName ?? "Untitled",
-        sector: data.sector ?? "—",
-        stage: data.stage ?? "—",
-        country: data.country ?? "—",
-        status: data.status ?? "submitted",
+      items.push({
+        type: "startup",
+        ownerUid: (data.ownerUid as string) ?? d.id,
+        displayName: (data.startupName as string) ?? "Untitled startup",
+        subtitleA: (data.sector as string) ?? "—",
+        subtitleB: (data.stage as string) ?? "—",
+        subtitleC: (data.country as string) ?? "—",
+        status: (data.status as string) ?? "submitted",
         updatedAt: data.updatedAt?.toMillis?.() ?? null,
-      };
-    });
+      });
+    }
+
+    for (const d of mentorsSnap.docs) {
+      const data = d.data();
+      const expertise = Array.isArray(data.expertiseAreas) ? data.expertiseAreas : [];
+      const sectors = Array.isArray(data.sectorFocus) ? data.sectorFocus : [];
+      items.push({
+        type: "mentor",
+        ownerUid: (data.ownerUid as string) ?? d.id,
+        displayName: (data.mentorName as string) ?? "Untitled mentor",
+        subtitleA: expertise.slice(0, 2).join(" · ") || "—",
+        subtitleB: sectors.slice(0, 2).join(" · ") || "—",
+        subtitleC: (data.country as string) ?? "—",
+        status: (data.status as string) ?? "submitted",
+        updatedAt: data.updatedAt?.toMillis?.() ?? null,
+      });
+    }
+
     items.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
     return NextResponse.json({ items });
   } catch (err) {

@@ -120,8 +120,8 @@ export default function ReviewMentorPage() {
         { merge: true }
       );
       saveMentorDraft({ ...draft!, confirmedProfile: parsed.data });
-      toast.success("Profile confirmed. Mentor passport ready for admin review.");
-      router.push("/mentor");
+      toast.success("Profile confirmed. Running AI verification…");
+      router.push("/mentor/passport/verifying");
     } catch (err: unknown) {
       console.error(err);
       toast.error(err instanceof Error ? err.message : "Could not save profile");

@@ -23,33 +23,48 @@ async function requireAdmin(req: NextRequest) {
   }
 }
 
+function stripTimestamps(data: Record<string, unknown>) {
+  const out: Record<string, unknown> = { ...data };
+  for (const k of Object.keys(out)) {
+    const v = out[k];
+    if (v && typeof v === "object" && "toMillis" in (v as object)) {
+      out[k] = (v as { toMillis: () => number }).toMillis();
+    }
+  }
+  return out;
+}
+
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireAdmin(req);
   if ("error" in auth) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
   const { id } = await ctx.params;
+  const explicitType = req.nextUrl.searchParams.get("type");
+
   try {
     const db = adminDb();
-    const [profileSnap, runSnap] = await Promise.all([
-      db.collection("startups").doc(id).get(),
-      db.collection("verification_results").doc(id).get(),
-    ]);
-    if (!profileSnap.exists) {
+    // Probe both collections so callers don't have to know the type;
+    // honour ?type=startup|mentor if it's provided to skip the extra read.
+    const checks: Array<Promise<[string, FirebaseFirestore.DocumentSnapshot]>> = [];
+    if (!explicitType || explicitType === "startup") {
+      checks.push(db.collection("startups").doc(id).get().then((s) => ["startup", s]));
+    }
+    if (!explicitType || explicitType === "mentor") {
+      checks.push(db.collection("mentors").doc(id).get().then((s) => ["mentor", s]));
+    }
+
+    const results = await Promise.all(checks);
+    const hit = results.find(([, snap]) => snap.exists);
+    if (!hit) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    // Strip Firestore Timestamp fields the client doesn't need to render.
-    const stripTimestamps = (data: Record<string, unknown>) => {
-      const out: Record<string, unknown> = { ...data };
-      for (const k of Object.keys(out)) {
-        const v = out[k];
-        if (v && typeof v === "object" && "toMillis" in (v as object)) {
-          out[k] = (v as { toMillis: () => number }).toMillis();
-        }
-      }
-      return out;
-    };
+    const [type, profileSnap] = hit;
+
+    const runSnap = await db.collection("verification_results").doc(id).get();
+
     return NextResponse.json({
+      type,
       profile: stripTimestamps(profileSnap.data() ?? {}),
       run: runSnap.exists ? stripTimestamps(runSnap.data() ?? {}) : null,
     });
