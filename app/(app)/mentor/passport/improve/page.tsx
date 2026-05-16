@@ -299,6 +299,8 @@ export default function ImproveMentorPage() {
             setImportedLabel(label);
           }}
           disabled={submitting}
+          validateAs="Supplementary evidence for an existing mentor passport — additional references, certifications, recent mentorship outcomes, or expanded expertise areas."
+          validationStrictness="lenient"
         />
 
         <div className="space-y-1.5">

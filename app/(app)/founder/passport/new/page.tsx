@@ -131,6 +131,7 @@ export default function NewPassportPage() {
             if (!sourceLabel) setSourceLabel(label);
           }}
           disabled={submitting}
+          validateAs="A startup profile, pitch deck, company website, or founder description — must mention what the startup does, the founder, sector / stage, and ideally traction, business model, or customers."
         />
         <div className="space-y-1.5">
           <Label htmlFor="source-label">Source label (optional)</Label>

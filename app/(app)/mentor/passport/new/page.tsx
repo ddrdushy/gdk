@@ -125,6 +125,7 @@ export default function NewMentorPassportPage() {
             if (!sourceLabel) setSourceLabel(label);
           }}
           disabled={submitting}
+          validateAs="A mentor's CV, LinkedIn profile, or professional bio — must include expertise areas, sector focus, and professional background (prior roles, credentials, or notable engagements)."
         />
         <div className="space-y-1.5">
           <Label htmlFor="source-label">Source label (optional)</Label>

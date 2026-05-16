@@ -322,6 +322,8 @@ export default function ImprovePassportPage() {
             setImportedLabel(label);
           }}
           disabled={submitting}
+          validateAs="Supplementary evidence for an existing startup passport — anything that adds verifiable detail about the company, its product, traction, customers, funding, partnerships, or compliance posture."
+          validationStrictness="lenient"
         />
 
         <div className="space-y-1.5">
