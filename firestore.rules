@@ -8,64 +8,74 @@ service cloud.firestore {
     function isOwner(uid) {
       return isSignedIn() && request.auth.uid == uid;
     }
-    function userRole() {
-      return isSignedIn() ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role : null;
+
+    // ─── Helpers that safely read the caller's own user doc ─────────────
+    // We use exists() before get() and .get('role', '') with a default so
+    // newly-signed-up users (whose doc may not have a role yet) never
+    // throw during rule evaluation.
+    function callerUserPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+    function callerHasUserDoc() {
+      return isSignedIn() && exists(callerUserPath());
+    }
+    function callerRole() {
+      return callerHasUserDoc() ? get(callerUserPath()).data.get('role', '') : '';
     }
     function isAdmin() {
-      return userRole() in ['admin', 'ecosystem-owner'];
+      return callerRole() == 'admin' || callerRole() == 'ecosystem-owner';
     }
 
     // ─── users ─────────────────────────────────────────────────────────
-    // Users can read + write their own profile. Admins can read all users.
+    // Owners always have full access to their own doc. Admin access to
+    // other users' profiles is intentionally NOT enforced here, because
+    // that would require a recursive get() that can fail during the
+    // initial sign-up handshake. Admin features that need to read other
+    // users go through server-side routes (Admin SDK bypasses rules).
     match /users/{uid} {
-      allow read: if isOwner(uid) || isAdmin();
-      allow create: if isOwner(uid);
-      allow update: if isOwner(uid) || isAdmin();
-      allow delete: if isAdmin();
+      allow read, create, update: if isOwner(uid);
+      allow delete: if false;
     }
 
     // ─── startups / mentors ────────────────────────────────────────────
-    // Owner creates and updates own record; admins read everything.
     match /startups/{id} {
-      allow read: if isOwner(resource.data.ownerUid) || isAdmin();
+      allow read: if isSignedIn() && (isOwner(resource.data.ownerUid) || isAdmin());
       allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
-      allow update: if isOwner(resource.data.ownerUid) || isAdmin();
+      allow update: if isSignedIn() && (isOwner(resource.data.ownerUid) || isAdmin());
       allow delete: if isAdmin();
     }
     match /mentors/{id} {
-      allow read: if isOwner(resource.data.ownerUid) || isAdmin();
+      allow read: if isSignedIn() && (isOwner(resource.data.ownerUid) || isAdmin());
       allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
-      allow update: if isOwner(resource.data.ownerUid) || isAdmin();
+      allow update: if isSignedIn() && (isOwner(resource.data.ownerUid) || isAdmin());
       allow delete: if isAdmin();
     }
 
     // ─── documents (evidence metadata) ─────────────────────────────────
     match /documents/{id} {
-      allow read: if isOwner(resource.data.ownerUid) || isAdmin();
+      allow read: if isSignedIn() && (isOwner(resource.data.ownerUid) || isAdmin());
       allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
-      allow update: if isOwner(resource.data.ownerUid) || isAdmin();
-      allow delete: if isOwner(resource.data.ownerUid) || isAdmin();
+      allow update, delete: if isSignedIn() && (isOwner(resource.data.ownerUid) || isAdmin());
     }
 
     // ─── AI agent runs / verification results ──────────────────────────
     match /autofill_profiles/{id} {
-      allow read: if isOwner(resource.data.ownerUid) || isAdmin();
-      allow write: if isOwner(resource.data.ownerUid) || isAdmin();
+      allow read, write: if isSignedIn() && (isOwner(resource.data.ownerUid) || isAdmin());
     }
     match /verification_results/{id} {
-      allow read: if isOwner(resource.data.ownerUid) || isAdmin();
-      allow write: if isAdmin();
+      // Holder writes their own run (orchestrator persists from the client);
+      // admins can read any run. For tight prod rules, route writes through
+      // the server and lock client writes off entirely.
+      allow read: if isSignedIn() && (isOwner(id) || isAdmin());
+      allow create, update: if isSignedIn() && (isOwner(id) || isAdmin());
+      allow delete: if isAdmin();
     }
 
     // ─── passports ─────────────────────────────────────────────────────
-    // Holders read their own passport; everyone signed in can read
-    // by ID (so a shared link works). Only admins issue / modify.
     match /passports/{id} {
       allow read: if isSignedIn();
       allow create, update, delete: if isAdmin();
     }
-    // public verification endpoint goes through server (admin SDK) — no
-    // unauthenticated client reads allowed here.
 
     match /stamps/{id} {
       allow read: if true;
@@ -80,8 +90,7 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     match /admin_reviews/{id} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
+      allow read, write: if isAdmin();
     }
     match /audit_logs/{id} {
       allow read: if isAdmin();
