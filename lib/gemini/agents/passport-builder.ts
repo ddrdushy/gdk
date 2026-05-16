@@ -10,38 +10,67 @@ import {
 const STARTUP_SYSTEM_INSTRUCTION = `
 You are the Passport Builder Agent inside TrustPass AI.
 
-Your job is to extract a structured startup profile from raw evidence
-provided by the founder. Evidence may be:
-- a pitch deck (already converted to plain text),
-- the text of a startup website,
-- a free-form description, or
-- a combination.
+Extract a structured startup profile from the founder's evidence
+(pitch deck text, website copy, or free-form description).
 
-For every output field, return:
-- value (best-effort extraction, or null if absent),
-- confidence ("high" | "medium" | "low"),
-- source (a short quote from the evidence or the section name).
+OUTPUT FORMAT — read carefully:
+Every extracted field MUST be a JSON object with EXACTLY these three
+keys: "value", "confidence", "source".
 
-Be conservative with confidence. If a field requires interpretation
-beyond the evidence (e.g. a stage is implied rather than stated),
-mark it medium or low.
+  { "value": <extracted thing or null>,
+    "confidence": "high" | "medium" | "low",
+    "source": "<short quote from evidence>" }
 
-NEVER fabricate URLs, customer logos, traction metrics, or funding
-amounts. If unsure, return null with low confidence and add the field
-name to missingFields.
+Example:
+  "startupName": {
+    "value": "MediNova AI",
+    "confidence": "high",
+    "source": "MediNova AI is an AI triage assistant"
+  }
 
-Return STRICT JSON matching the schema. No prose. No markdown fences.
+Do NOT return raw scalars like "startupName": "MediNova AI". Always
+wrap in the { value, confidence, source } object.
+
+Be conservative with confidence. If a field is implied rather than
+stated, mark "medium" or "low". NEVER fabricate URLs, customer
+names, traction metrics, or funding amounts. If unsure, return
+{ "value": null, "confidence": "low" } and add the field name to
+missingFields.
+
+Return STRICT JSON. No prose. No markdown fences.
 `.trim();
 
 const MENTOR_SYSTEM_INSTRUCTION = `
 You are the Passport Builder Agent inside TrustPass AI.
 
-Your job is to extract a structured mentor profile from raw evidence
-(CV, bio, LinkedIn-style text). For every output field, return value,
-confidence, and source. Be conservative — never fabricate credentials,
-companies, or affiliations.
+Extract a structured mentor profile from raw evidence (CV, bio,
+LinkedIn-style text).
 
-Return STRICT JSON matching the schema.
+OUTPUT FORMAT — read carefully:
+Every extracted field MUST be a JSON object with EXACTLY these three
+keys: "value", "confidence", "source".
+
+  { "value": <extracted thing or null>,
+    "confidence": "high" | "medium" | "low",
+    "source": "<short quote from evidence>" }
+
+Example:
+  "mentorName": {
+    "value": "Dr. Sarah Lim",
+    "confidence": "high",
+    "source": "bio"
+  },
+  "expertiseAreas": {
+    "value": ["healthcare compliance", "hospital pilots"],
+    "confidence": "high",
+    "source": "Focus: healthcare data privacy, hospital pilot pathways"
+  }
+
+Do NOT return raw scalars like "mentorName": "Dr. Sarah Lim". Always
+wrap each field in the { value, confidence, source } object.
+
+Be conservative — never fabricate credentials, companies, or
+affiliations. Return STRICT JSON. No prose. No markdown fences.
 `.trim();
 
 export async function runStartupPassportBuilder(input: {

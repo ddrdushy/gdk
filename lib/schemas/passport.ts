@@ -28,12 +28,36 @@ export const STAGES = [
 
 export const CONFIDENCE_LEVELS = ["high", "medium", "low"] as const;
 
+/**
+ * A field returned by the Passport Builder agent.
+ *
+ * Canonical shape: { value, confidence, source }. Smaller / non-Gemini
+ * models (Gemma-3n via NVIDIA NIM, some Ollama models) often return a
+ * raw scalar / array directly under the field name. We accept both
+ * and normalise to the wrapped form so downstream code is uniform.
+ */
 export const fieldWithConfidence = <T extends z.ZodTypeAny>(value: T) =>
-  z.object({
-    value: value.nullable().optional(),
-    confidence: z.enum(CONFIDENCE_LEVELS).nullable().optional(),
-    source: z.string().nullable().optional(),
-  });
+  z.preprocess(
+    (input) => {
+      if (
+        input &&
+        typeof input === "object" &&
+        !Array.isArray(input) &&
+        ("value" in (input as object) ||
+          "confidence" in (input as object) ||
+          "source" in (input as object))
+      ) {
+        return input;
+      }
+      // Raw scalar / array → wrap as { value: <raw> }
+      return { value: input };
+    },
+    z.object({
+      value: value.nullable().optional(),
+      confidence: z.enum(CONFIDENCE_LEVELS).nullable().optional(),
+      source: z.string().nullable().optional(),
+    })
+  );
 
 /**
  * Output schema for the Passport Builder Agent (startup version).

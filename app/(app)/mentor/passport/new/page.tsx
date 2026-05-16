@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { saveMentorDraft } from "@/lib/passport-store";
 import { EvidenceImporter } from "@/components/passport/evidence-importer";
+import { EvidenceCharCounter } from "@/components/passport/evidence-char-counter";
 import { cn } from "@/lib/utils";
 
 type Source = "cv" | "linkedin" | "bio";
@@ -150,9 +151,7 @@ export default function NewMentorPassportPage() {
             rows={12}
             className="min-h-[260px]"
           />
-          <p className="text-[11px] text-navy-500">
-            {evidence.length} characters · Aim for at least 200 characters for best results.
-          </p>
+          <EvidenceCharCounter chars={evidence.length} />
         </div>
 
         <div className="flex justify-end">
