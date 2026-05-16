@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { saveMentorDraft } from "@/lib/passport-store";
+import { EvidenceImporter } from "@/components/passport/evidence-importer";
 import { cn } from "@/lib/utils";
 
 type Source = "cv" | "linkedin" | "bio";
@@ -117,6 +118,13 @@ export default function NewMentorPassportPage() {
       </div>
 
       <Card className="mt-6 p-6 space-y-4">
+        <EvidenceImporter
+          onExtracted={(text, label) => {
+            setEvidence(text);
+            if (!sourceLabel) setSourceLabel(label);
+          }}
+          disabled={submitting}
+        />
         <div className="space-y-1.5">
           <Label htmlFor="source-label">Source label (optional)</Label>
           <Input

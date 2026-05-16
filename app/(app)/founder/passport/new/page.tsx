@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { saveDraft } from "@/lib/passport-store";
+import { EvidenceImporter } from "@/components/passport/evidence-importer";
 import { cn } from "@/lib/utils";
 
 type Source = "pitch-deck" | "website" | "description";
@@ -123,6 +124,13 @@ export default function NewPassportPage() {
       </div>
 
       <Card className="mt-6 p-6 space-y-4">
+        <EvidenceImporter
+          onExtracted={(text, label) => {
+            setEvidence(text);
+            if (!sourceLabel) setSourceLabel(label);
+          }}
+          disabled={submitting}
+        />
         <div className="space-y-1.5">
           <Label htmlFor="source-label">Source label (optional)</Label>
           <Input
@@ -157,12 +165,7 @@ export default function NewPassportPage() {
           </p>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-          <Button asChild variant="outline" size="lg">
-            <span className="cursor-not-allowed opacity-60" aria-disabled>
-              <FileUp className="h-4 w-4" /> Upload file (coming next)
-            </span>
-          </Button>
+        <div className="flex justify-end">
           <Button
             type="button"
             variant="primary"
