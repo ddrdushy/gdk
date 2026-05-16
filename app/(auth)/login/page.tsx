@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GoogleButton } from "@/components/auth/google-button";
 import { dashboardPathForRole } from "@/lib/schemas/user";
+import { friendlyAuthError } from "@/lib/auth/firebase-errors";
 
 function LoginInner() {
   const router = useRouter();
@@ -32,8 +33,7 @@ function LoginInner() {
       toast.success("Welcome back.");
       router.push(redirect ?? "/role");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Sign-in failed";
-      toast.error(msg.replace("Firebase: ", ""));
+      toast.error(friendlyAuthError(err, "Sign-in failed"));
     } finally {
       setSubmitting(false);
     }
@@ -46,8 +46,7 @@ function LoginInner() {
       await refreshProfile();
       router.push(redirect ?? "/role");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Google sign-in failed";
-      toast.error(msg.replace("Firebase: ", ""));
+      toast.error(friendlyAuthError(err, "Google sign-in failed"));
     } finally {
       setGoogleLoading(false);
     }

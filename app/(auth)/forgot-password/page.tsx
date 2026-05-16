@@ -9,6 +9,7 @@ import { getFirebaseAuth } from "@/lib/firebase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { friendlyAuthError } from "@/lib/auth/firebase-errors";
 
 export default function ForgotPasswordPage() {
   const [submitting, setSubmitting] = useState(false);
@@ -22,8 +23,7 @@ export default function ForgotPasswordPage() {
       await sendPasswordResetEmail(getFirebaseAuth(), email);
       setSent(true);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Could not send reset email";
-      toast.error(msg.replace("Firebase: ", ""));
+      toast.error(friendlyAuthError(err, "Could not send reset email"));
     } finally {
       setSubmitting(false);
     }

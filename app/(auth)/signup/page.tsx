@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GoogleButton } from "@/components/auth/google-button";
 import { USER_ROLES, USER_ROLE_LABELS, type UserRole } from "@/lib/schemas/user";
+import { friendlyAuthError } from "@/lib/auth/firebase-errors";
 
 function SignupInner() {
   const router = useRouter();
@@ -40,8 +41,7 @@ function SignupInner() {
       toast.success("Account created.");
       router.push("/role");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Sign-up failed";
-      toast.error(msg.replace("Firebase: ", ""));
+      toast.error(friendlyAuthError(err, "Sign-up failed"));
     } finally {
       setSubmitting(false);
     }
