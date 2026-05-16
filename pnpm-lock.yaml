@@ -122,12 +122,19 @@ importers:
       tailwindcss-animate:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@4.3.0)
+      tesseract.js:
+        specifier: ^7.0.0
+        version: 7.0.0
       unpdf:
         specifier: ^1.6.2
         version: 1.6.2(@napi-rs/canvas@0.1.100)
       zod:
         specifier: ^3.24.1
         version: 3.25.76
+    optionalDependencies:
+      '@napi-rs/canvas':
+        specifier: ^0.1.100
+        version: 0.1.100
     devDependencies:
       '@tailwindcss/postcss':
         specifier: ^4

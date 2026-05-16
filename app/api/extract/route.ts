@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { extractText, getDocumentProxy } from "unpdf";
+import { extractText, getDocumentProxy, renderPageAsImage } from "unpdf";
 import { convert as htmlToText } from "html-to-text";
 import { parseOffice } from "officeparser";
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -90,7 +90,7 @@ async function handleFile(req: NextRequest) {
 
   try {
     const buf = Buffer.from(await file.arrayBuffer());
-    let raw = kind === "pdf" ? await extractPdf(buf) : await extractOffice(buf);
+    let raw = kind === "pdf" ? await extractPdf(buf) : await extractOffice(buf, kind);
     let usedVision = false;
 
     // PDF fallback chain:
@@ -98,17 +98,32 @@ async function handleFile(req: NextRequest) {
     //   2. still empty  → Gemini vision OCR (multimodal, reads images in PDF)
     if (kind === "pdf" && !raw.trim()) {
       try {
-        raw = await extractOffice(buf);
+        raw = await extractOffice(buf, "pdf");
       } catch {
         /* fall through to vision */
       }
     }
+    let ocrEngine: "gemini-vision" | "tesseract" | null = null;
+    let visionError: string | null = null;
     if (kind === "pdf" && !raw.trim() && process.env.GEMINI_API_KEY) {
       try {
         raw = await extractPdfWithVision(buf);
+        ocrEngine = "gemini-vision";
         usedVision = true;
       } catch (err) {
-        console.warn("vision OCR failed", err);
+        const msg = err instanceof Error ? err.message : String(err);
+        visionError = msg;
+        console.warn("Gemini vision OCR failed", msg);
+      }
+    }
+    // Tesseract fallback — runs locally, no API quota. Slow but reliable.
+    if (kind === "pdf" && !raw.trim()) {
+      try {
+        raw = await extractPdfWithTesseract(buf);
+        ocrEngine = "tesseract";
+        usedVision = true;
+      } catch (err) {
+        console.warn("Tesseract OCR failed", err instanceof Error ? err.message : err);
       }
     }
 
@@ -119,8 +134,9 @@ async function handleFile(req: NextRequest) {
           error: `No readable text in this ${kind.toUpperCase()}.`,
           hint:
             kind === "pdf"
-              ? "Even Gemini vision OCR couldn't read the file. Check that the PDF actually contains content and isn't corrupted."
+              ? "Both vision OCR and Tesseract gave up. Upload the original .PPTX/.DOCX if you have it, or paste the content directly."
               : "Slides may be image-heavy. Paste the speaker notes or descriptions instead.",
+          quotaExhausted: visionError && /429|quota|rate.*limit/i.test(visionError),
         },
         { status: 422 }
       );
@@ -133,6 +149,7 @@ async function handleFile(req: NextRequest) {
         chars: trimmed.length,
         filename: file.name,
         ocr: usedVision || undefined,
+        ocrEngine,
       },
     });
   } catch (err) {
@@ -191,18 +208,64 @@ do not wrap in JSON or code fences — return the raw text only.`,
   return result.response.text();
 }
 
+/**
+ * True offline OCR for image-only PDFs. No API quota. Slower than
+ * Gemini vision (~3–8 s per page on a modern Mac) but works regardless
+ * of network or rate limits. Used as the last-resort fallback.
+ *
+ * Strategy: render each PDF page to a PNG via unpdf's renderPageAsImage
+ * (which wraps pdfjs-dist) and feed it through Tesseract.js with the
+ * English language pack.
+ */
+async function extractPdfWithTesseract(buf: Buffer): Promise<string> {
+  // Dynamic import keeps tesseract.js out of the cold-start hot path
+  // — the route boots in ~50 ms and only pulls the OCR engine in when
+  // we actually need it.
+  const Tesseract = (await import("tesseract.js")).default;
+
+  // Discover the page count
+  const pdf = await getDocumentProxy(new Uint8Array(buf));
+  const pageCount = pdf.numPages;
+  // Cap at 20 pages to keep latency bounded — pitch decks are rarely longer
+  const maxPages = Math.min(pageCount, 20);
+
+  const worker = await Tesseract.createWorker("eng", undefined, {
+    // Suppress tesseract's loud per-page logging
+    logger: () => {},
+  });
+
+  try {
+    const texts: string[] = [];
+    for (let p = 1; p <= maxPages; p++) {
+      try {
+        const png = await renderPageAsImage(new Uint8Array(buf), p, {
+          canvasImport: () => import("@napi-rs/canvas"),
+          scale: 2, // 2x for better OCR accuracy
+        });
+        const { data } = await worker.recognize(Buffer.from(png));
+        if (data.text.trim()) texts.push(`--- Page ${p} ---\n${data.text.trim()}`);
+      } catch (err) {
+        console.warn(`tesseract page ${p} failed`, err instanceof Error ? err.message : err);
+      }
+    }
+    return texts.join("\n\n");
+  } finally {
+    await worker.terminate();
+  }
+}
+
 async function extractPdf(buf: Buffer): Promise<string> {
   const pdf = await getDocumentProxy(new Uint8Array(buf));
   const { text: pages } = await extractText(pdf, { mergePages: false });
   return (Array.isArray(pages) ? pages.join("\n\n") : String(pages));
 }
 
-async function extractOffice(buf: Buffer): Promise<string> {
-  // officeparser handles .pptx, .docx, .xlsx, .odt, .odp, .ods.
-  // Old binary .ppt / .doc / .xls are not supported — those throw and we
-  // surface the upstream error to the user.
-  // parseOffice() returns an AST object with a .toText() method.
-  const ast = await parseOffice(buf);
+async function extractOffice(buf: Buffer, kind: DocKind): Promise<string> {
+  // officeparser handles .pptx, .docx, .xlsx, .odt, .odp, .ods, and .pdf.
+  // Auto-detection from buffer magic bytes fails on some Node runtimes
+  // (notably Alpine in Docker), so we pass the fileType hint explicitly
+  // based on the kind we already detected from the upload.
+  const ast = await parseOffice(buf, { fileType: kind });
   if (typeof ast === "string") return ast;
   if (ast && typeof (ast as { toText?: () => string }).toText === "function") {
     return (ast as { toText: () => string }).toText();
