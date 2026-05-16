@@ -14,8 +14,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { EvidenceImporter } from "@/components/passport/evidence-importer";
 import { EvidenceCharCounter } from "@/components/passport/evidence-char-counter";
+import { MissingDocItem, type DocResponse } from "@/components/passport/missing-doc-item";
 import { startupProfileSchema, type StartupProfile } from "@/lib/schemas/passport";
 import {
+  evidenceAgentSchema,
   stampAgentSchema,
   type StampResult,
 } from "@/lib/schemas/verification";
@@ -24,18 +26,24 @@ import {
  * Build a context-aware placeholder for the new-evidence textarea.
  *
  * Priority:
- *   1. If the agent gave a concrete Next Action, echo it verbatim — the
- *      user sees the exact items requested ("financial statements for
- *      the last 3 years, client contracts, BNM RMiT…") instead of a
- *      generic suggestion list.
- *   2. Otherwise fall back to per-stamp reasons, which usually list
- *      the gaps directly.
- *   3. If neither is available (no run yet), use a neutral hint.
+ *   1. Concrete list of missing documents (from the Evidence Extraction
+ *      agent) — most actionable, lists exact items the user needs to
+ *      provide.
+ *   2. The agent's nextAction text.
+ *   3. Per-pending-stamp reasons.
+ *   4. Generic suggestion if nothing else.
  */
 function buildPlaceholder(
+  missingDocs: string[],
   nextAction: string | undefined,
   pendingStamps: Array<{ key: string; reason: string }>
 ): string {
+  if (missingDocs.length > 0) {
+    return (
+      "Address each missing document below. You can paste text OR upload supporting files — both get combined:\n\n" +
+      missingDocs.map((d) => `• ${d}`).join("\n")
+    );
+  }
   if (nextAction && nextAction.length > 10) {
     return `Address the items above. For example:\n\n${nextAction}`;
   }
@@ -48,6 +56,14 @@ function buildPlaceholder(
   return "Paste any new evidence here — pilot report, funding letter, regulatory approval, additional traction metrics, customer testimonials, etc.";
 }
 
+function hasAnyResponse(
+  responses: Record<number, DocResponse>,
+  freeForm: string
+): boolean {
+  if (freeForm.trim().length >= 30) return true;
+  return Object.values(responses).some((r) => r.text.trim().length >= 10);
+}
+
 export default function ImprovePassportPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -56,9 +72,12 @@ export default function ImprovePassportPage() {
   const [profile, setProfile] = useState<StartupProfile | null>(null);
   const [existingEvidence, setExistingEvidence] = useState<string>("");
   const [stamps, setStamps] = useState<StampResult | null>(null);
+  const [missingDocs, setMissingDocs] = useState<string[]>([]);
+  const [inconsistencies, setInconsistencies] = useState<string[]>([]);
   const [adminNote, setAdminNote] = useState<string | null>(null);
   const [newEvidence, setNewEvidence] = useState<string>("");
   const [importedLabel, setImportedLabel] = useState<string>("");
+  const [docResponses, setDocResponses] = useState<Record<number, DocResponse>>({});
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -89,6 +108,11 @@ export default function ImprovePassportPage() {
             const run = runSnap.data();
             const parsedStamps = run.stamps ? stampAgentSchema.safeParse(run.stamps) : null;
             if (parsedStamps?.success) setStamps(parsedStamps.data);
+            const parsedEvidence = run.evidence ? evidenceAgentSchema.safeParse(run.evidence) : null;
+            if (parsedEvidence?.success) {
+              setMissingDocs(parsedEvidence.data.missingDocuments ?? []);
+              setInconsistencies(parsedEvidence.data.inconsistencies ?? []);
+            }
           }
         }
       } catch (err) {
@@ -102,21 +126,35 @@ export default function ImprovePassportPage() {
 
   async function onSubmit() {
     if (!user || !profile) return;
-    if (!newEvidence.trim()) {
-      toast.error("Add new evidence first — paste text or upload a file.");
+
+    // Combine per-missing-doc tagged responses with the free-form extras.
+    const today = new Date().toISOString().slice(0, 10);
+    const taggedSections: string[] = [];
+    for (let i = 0; i < missingDocs.length; i++) {
+      const resp = docResponses[i];
+      if (resp && resp.text.trim()) {
+        taggedSections.push(
+          `--- [${today}] ${missingDocs[i]}${resp.filename ? ` (file: ${resp.filename})` : ""} ---\n${resp.text.trim()}`
+        );
+      }
+    }
+    if (newEvidence.trim()) {
+      taggedSections.push(
+        `--- [${today}] Additional notes${importedLabel ? ` (${importedLabel})` : ""} ---\n${newEvidence.trim()}`
+      );
+    }
+
+    if (taggedSections.length === 0) {
+      toast.error("Address at least one missing item — upload a file or type a response.");
       return;
     }
+
+    const additionalEvidence = taggedSections.join("\n\n");
+    const combined = [existingEvidence, "\n\n", additionalEvidence].filter(Boolean).join("");
+
     setSubmitting(true);
     try {
       const db = getDb();
-      // Append the new evidence to the existing field with a separator,
-      // then re-flag as "submitted" so the verification page treats it as
-      // a fresh run.
-      const combined = [
-        existingEvidence,
-        `\n\n--- ADDITIONAL EVIDENCE${importedLabel ? ` (${importedLabel})` : ""} (${new Date().toISOString().slice(0, 10)}) ---\n\n`,
-        newEvidence.trim(),
-      ].filter(Boolean).join("");
       await setDoc(
         doc(db, "startups", user.uid),
         {
@@ -174,15 +212,56 @@ export default function ImprovePassportPage() {
           Add more evidence
         </p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight text-navy-950">
-          Address what the AI flagged.
+          Submit only what the AI is missing.
         </h1>
         <p className="mt-1 text-sm text-navy-600">
-          Upload new docs or paste text. We&apos;ll re-run all 5 agents with the combined evidence and update your stamps.
+          You don&apos;t need to re-upload everything. Just provide the items below — we&apos;ll merge them with your existing evidence and re-run all 5 agents.
         </p>
       </div>
 
-      {/* What needs addressing — per-stamp specifics, not generic */}
-      {(nextAction || adminNote || pendingStamps.length > 0) && (
+      {/* PRIMARY: per-item upload for each missing document */}
+      {missingDocs.length > 0 && (
+        <Card className="mt-6 p-5 border-amber-300 bg-amber-50/40">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-amber-500 text-white">
+              <AlertTriangle className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-800">
+                Missing documents — upload or paste per item
+              </p>
+              <p className="mt-1 text-[12px] text-navy-700">
+                Each upload is tagged so the AI knows exactly which gap you&apos;re closing.
+              </p>
+              <div className="mt-4 space-y-2">
+                {missingDocs.map((doc, i) => (
+                  <MissingDocItem
+                    key={i}
+                    index={i}
+                    label={doc}
+                    response={docResponses[i] ?? { text: "" }}
+                    onChange={(next) => setDocResponses((m) => ({ ...m, [i]: next }))}
+                    disabled={submitting}
+                  />
+                ))}
+              </div>
+              {inconsistencies.length > 0 && (
+                <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-rose-800">Also clarify these inconsistencies</p>
+                  <ul className="mt-2 space-y-1">
+                    {inconsistencies.map((line, i) => (
+                      <li key={i} className="text-[12.5px] text-rose-800">• {line}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Secondary context: only when there's no missing-docs list to act on */}
+      {missingDocs.length === 0 && (nextAction || adminNote || pendingStamps.length > 0) && (
         <Card className="mt-6 p-5 border-amber-200 bg-amber-50/40">
           <div className="flex items-start gap-3">
             <div className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-amber-500 text-white">
@@ -247,15 +326,19 @@ export default function ImprovePassportPage() {
 
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-navy-800" htmlFor="new-evidence">
-            New evidence
+            {missingDocs.length > 0 ? "Additional notes (optional)" : "New evidence"}
           </label>
           <Textarea
             id="new-evidence"
             value={newEvidence}
             onChange={(e) => setNewEvidence(e.target.value)}
-            placeholder={buildPlaceholder(nextAction, pendingStamps)}
-            rows={10}
-            className="min-h-[220px]"
+            placeholder={
+              missingDocs.length > 0
+                ? "Anything else not on the list above — context, dates, updates, etc."
+                : buildPlaceholder(missingDocs, nextAction, pendingStamps)
+            }
+            rows={missingDocs.length > 0 ? 5 : 10}
+            className={missingDocs.length > 0 ? "min-h-[100px]" : "min-h-[220px]"}
           />
           <EvidenceCharCounter chars={newEvidence.length} />
         </div>
@@ -269,7 +352,7 @@ export default function ImprovePassportPage() {
             variant="primary"
             size="lg"
             onClick={onSubmit}
-            disabled={submitting || newEvidence.trim().length < 30}
+            disabled={submitting || !hasAnyResponse(docResponses, newEvidence)}
           >
             {submitting ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Submitting…</>
