@@ -38,6 +38,9 @@ yarn-error.log*
 service-account*.json
 *-firebase-adminsdk-*.json
 
+# tesseract.js language data downloaded at runtime
+*.traineddata
+
 # vercel
 .vercel
 
