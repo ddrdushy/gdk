@@ -234,6 +234,31 @@ gdk/
 
 ---
 
+## 6.5. Demo Credentials (after running the seed)
+
+Drop pre-built personas into Firebase with one command:
+
+```bash
+node scripts/seed-demo.mjs            # idempotent — safe to re-run
+node scripts/seed-demo.mjs --clean    # nuke previous demo accounts first
+```
+
+After it runs, log in at http://localhost:3000/login with any of these (password `DemoPass!2026` for all):
+
+| Persona | Email | What you'll see |
+|---|---|---|
+| Founder · MediNova AI (HealthTech, MVP, **conditionally verified**) | `founder.medinova@trustpass.demo` | 4 earned + 3 pending stamps · 12 views on public passport · improve flow with 4 missing-doc cards |
+| Founder · GreenLogix (CleanTech, Early Revenue, **verified**) | `founder.greenlogix@trustpass.demo` | 6 earned stamps · 47 views · 2 activated linkages |
+| Founder · EduFlow (EdTech, Prototype, **pending evidence**) | `founder.eduflow@trustpass.demo` | Early-stage profile · 4 missing-doc items to address |
+| Mentor · Dr. Sarah Lim (verified) | `mentor.sarah@trustpass.demo` | HealthTech compliance specialist · 5 earned mentor stamps · matched startup archetypes |
+| Mentor · Marcus Chen (verified) | `mentor.marcus@trustpass.demo` | Ex-Stripe APAC, ex-Carousell · fundraising + B2B SaaS GTM |
+| Admin · Acme Accelerator | `admin@trustpass.demo` | Live counts: 5 pending review · 4 verified this month · 2 active linkages · 16 stamps issued |
+| Partner · Sunway Ventures | `partner@trustpass.demo` | Inbox with GreenLogix intro from admin |
+
+The seed also drops 2 activated linkages (admin → mentor + admin → partner) so the partner inbox + admin linkages page have real records to inspect, plus seeded `passport_stats` view counts on the two flagship passports.
+
+---
+
 ## 7. Quick Start (Local)
 
 ### Prerequisites
