@@ -25,17 +25,21 @@ export default async function PublicPassportPage({ params }: PublicPassportPageP
 
   let profileData: unknown;
   let runData: unknown;
+  let fetchFailed = false;
   try {
     const db = adminDb();
     const [profileSnap, runSnap] = await Promise.all([
       db.collection("startups").doc(id).get(),
       db.collection("verification_results").doc(id).get(),
     ]);
-    if (!profileSnap.exists) return notFound();
-    profileData = profileSnap.data();
+    profileData = profileSnap.exists ? profileSnap.data() : null;
     runData = runSnap.exists ? runSnap.data() : null;
   } catch (err) {
     console.error("failed to load public passport", err);
+    fetchFailed = true;
+  }
+
+  if (fetchFailed) {
     return (
       <div className="mx-auto max-w-2xl px-6 py-24 text-center">
         <h1 className="text-2xl font-semibold text-navy-950">Verification temporarily unavailable.</h1>
@@ -45,6 +49,7 @@ export default async function PublicPassportPage({ params }: PublicPassportPageP
       </div>
     );
   }
+  if (!profileData) return notFound();
 
   const profileParsed = startupProfileSchema.safeParse(profileData);
   if (!profileParsed.success) return notFound();
