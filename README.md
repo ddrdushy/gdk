@@ -448,14 +448,22 @@ Cloud Run is preferred because the Google Cloud guidance assumes it.
 Following the order in `docs/gcd steps`:
 
 - [x] Scaffold (Next.js, Tailwind, shadcn primitives, design tokens, Docker, README)
-- [ ] Module 1 — Landing pages
-- [ ] Module 2 — Auth & role selection (Firebase Auth)
-- [ ] Module 3 — Startup Passport (AI-assisted profile builder)
-- [ ] Module 4 — AI Verification Engine (7 agents + orchestrator)
-- [ ] Module 5 — Digital Passport & Stamp system
-- [ ] Module 6 — Admin Verification Workspace
-- [ ] Module 7 — Ecosystem Linkage
-- [ ] Production polish + Cloud Run deploy
+- [x] Module 1 — Landing pages (8 pages: home, product, how-it-works, use-cases, passports, pricing, start, contact)
+- [x] Module 2 — Auth & role selection (Firebase Auth, login / signup / role picker / forgot password / 4 dashboards / Firestore rules)
+- [x] Module 3 — Startup Passport (AI-assisted profile builder; pitch deck / website / description sources; per-field confidence + source citation)
+- [x] Module 4 — AI Verification Engine (5 agents + orchestrator + SSE streaming): Evidence Extraction, Eligibility, Readiness & Risk, Passport & Stamp, Linkage Recommendation
+- [x] Module 5 — Digital Passport view + public verification page (server-rendered via Firebase Admin)
+- [x] Module 6 — Admin Verification Workspace (review queue, AI explainer, approve / conditionally approve / request evidence / reject with auditable transactions)
+- [x] Module 7 — Ecosystem Linkage workspace (sequenced recommendations per verified startup)
+- [ ] Production: Cloud Run deploy, Document AI for messy PDFs, file upload to Cloud Storage, intro-message generator agent, mentor passport flow
+
+### Required Google Cloud manual steps (before login works)
+
+1. Firebase Console → Authentication → enable **Email/Password** + **Google**
+2. Firebase Console → Firestore Database → Rules → paste `firestore.rules` and publish
+3. GCP IAM → Service Accounts → create `trustpass-server` (Firebase Admin SDK Administrator Service Agent + Cloud Datastore User + Storage Object Admin) → download JSON key → paste single line into `FIREBASE_SERVICE_ACCOUNT_JSON` in `.env.local`
+
+The public passport page (`/passport/[uid]`) and the admin decision API both require the service account.
 
 ---
 
